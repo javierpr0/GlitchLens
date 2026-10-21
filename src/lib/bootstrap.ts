@@ -1,5 +1,6 @@
 import "server-only";
 import { getDb } from "@/lib/db";
+import { pruneAudit } from "@/lib/audit";
 import { randomToken, safeEqual, sha256, hashPassword } from "@/lib/crypto";
 import { PASSWORD_MAX, PASSWORD_MIN, UserError, countUsers, createFirstSuperadmin } from "@/lib/users";
 
@@ -8,6 +9,7 @@ const SETUP_KEY = "setup_code_hash";
 /** Runs once per server start: migrates the DB and prepares the first superadmin. */
 export async function bootstrap(): Promise<void> {
   const db = getDb();
+  pruneAudit();
 
   if (countUsers() > 0) {
     db.prepare("DELETE FROM settings WHERE key = ?").run(SETUP_KEY);

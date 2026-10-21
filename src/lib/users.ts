@@ -1,6 +1,7 @@
 import "server-only";
 import { getDb, transaction } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/crypto";
+import { recordAudit } from "@/lib/audit";
 import { clearFailures, lockedFor, recordFailure } from "@/lib/login-throttle";
 
 export type Role = "superadmin" | "member" | "viewer";
@@ -138,8 +139,8 @@ export interface UserPatch {
   instanceIds?: number[];
 }
 
-export function updateUser(id: number, patch: UserPatch, actingUserId: number): void {
-  transaction((db) => {
+export function updateUser(id: number, patch: UserPatch, actingUserId: number): string {
+  return transaction((db) => {
     const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
     if (!row) throw new UserError("not_found", "User not found.");
 
@@ -173,20 +174,22 @@ export function updateUser(id: number, patch: UserPatch, actingUserId: number): 
     if (patch.instanceIds && role !== "superadmin") setInstances(id, patch.instanceIds);
     if (role === "superadmin") db.prepare("DELETE FROM user_instances WHERE user_id = ?").run(id);
     if (patch.passwordHash || !active) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+    return row.email;
   });
 }
 
-export function deleteUser(id: number, actingUserId: number): void {
-  transaction((db) => {
+export function deleteUser(id: number, actingUserId: number): string {
+  return transaction((db) => {
     if (id === actingUserId) throw new UserError("self", "You cannot delete your own account.");
-    const row = db.prepare("SELECT role, active FROM users WHERE id = ?").get(id) as
-      | Pick<UserRow, "role" | "active">
+    const row = db.prepare("SELECT email, role, active FROM users WHERE id = ?").get(id) as
+      | Pick<UserRow, "email" | "role" | "active">
       | undefined;
     if (!row) throw new UserError("not_found", "User not found.");
     if (row.role === "superadmin" && row.active && otherActiveSuperadmins(id) === 0) {
       throw new UserError("last_superadmin", "There must be at least one active superadmin.");
     }
     db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    return row.email;
   });
 }
 
@@ -225,6 +228,10 @@ export async function verifyLogin(email: string, password: string, ip: string | 
   }
   if (!row || !valid || !row.active) {
     recordFailure(email, ip, !!row);
+    // Only real accounts: logging every made-up email would let anyone fill the audit log.
+    if (row && lockedFor(email, ip) > 0) {
+      recordAudit({ actor: null, actorEmail: row.email, action: "login.locked", target: row.email });
+    }
     return { ok: false, reason: "invalid" };
   }
   clearFailures(email);

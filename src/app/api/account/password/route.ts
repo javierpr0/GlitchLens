@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { getSessionHash } from "@/lib/auth";
 import { guardRequest } from "@/lib/bff-guard";
 import { errorResponse, readJson } from "@/lib/route-utils";
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
   if (parsed.response) return parsed.response;
   try {
     await changeOwnPassword(guard.user.id, parsed.data.current, parsed.data.next, (await getSessionHash()) ?? "");
+    recordAudit({ actor: guard.user, action: "account.password_change", headers: req.headers });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

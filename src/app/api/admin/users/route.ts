@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import { hashPassword } from "@/lib/crypto";
 import { errorResponse, readJson } from "@/lib/route-utils";
@@ -25,6 +26,13 @@ export async function POST(req: Request) {
       ...rest,
       role: role as (typeof ROLES)[number],
       passwordHash: await hashPassword(password),
+    });
+    recordAudit({
+      actor: guard.user,
+      action: "user.create",
+      target: rest.email,
+      detail: { role, instances: rest.instanceIds },
+      headers: req.headers,
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (e) {

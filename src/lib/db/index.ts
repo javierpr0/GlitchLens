@@ -62,6 +62,24 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, instance_id)
   );
   `,
+  // Session metadata (for the "your sessions" list and idle expiry) and the admin audit log.
+  // audit_log has no foreign keys on purpose: history must outlive the users it mentions.
+  `
+  ALTER TABLE sessions ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE sessions ADD COLUMN user_agent TEXT;
+  ALTER TABLE sessions ADD COLUMN ip TEXT;
+  UPDATE sessions SET last_used_at = created_at;
+  CREATE TABLE audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          INTEGER NOT NULL,
+    actor_id    INTEGER,
+    actor_email TEXT,
+    action      TEXT NOT NULL,
+    target      TEXT,
+    detail      TEXT,
+    ip          TEXT
+  );
+  `,
 ];
 
 const globalForDb = globalThis as unknown as { __glitchlensDb?: DatabaseSync };

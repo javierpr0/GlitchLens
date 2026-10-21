@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import { hashPassword } from "@/lib/crypto";
 import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
@@ -31,7 +32,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const { password, role, ...rest } = parsed.data;
 
   try {
-    updateUser(
+    const email = updateUser(
       id,
       {
         ...rest,
@@ -40,6 +41,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
       },
       guard.user.id,
     );
+    recordAudit({
+      actor: guard.user,
+      action: password ? "user.password_reset" : "user.update",
+      target: email,
+      // Field names and non-secret values only.
+      detail: { fields: Object.keys(parsed.data).filter((k) => k !== "password"), role, active: rest.active },
+      headers: req.headers,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);
@@ -52,7 +61,8 @@ export async function DELETE(req: Request, ctx: Ctx) {
   const id = await parseId(ctx);
   if (!id) return jsonError("Invalid id", 400);
   try {
-    deleteUser(id, guard.user.id);
+    const email = deleteUser(id, guard.user.id);
+    recordAudit({ actor: guard.user, action: "user.delete", target: email, headers: req.headers });
     return new NextResponse(null, { status: 204 });
   } catch (e) {
     return errorResponse(e);

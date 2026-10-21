@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import {
   deleteInstance,
@@ -57,6 +58,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (!probe.ok) return jsonError(probe.message, 400);
     }
     updateInstance(id, patch);
+    recordAudit({
+      actor: guard.user,
+      action: "instance.update",
+      target: `${current.name} (${current.baseUrl})`,
+      // Which fields changed, never the token itself.
+      detail: { fields: Object.keys(patch).filter((k) => k !== "token"), tokenReplaced: !!patch.token, tokenMode: patch.tokenMode },
+      headers: req.headers,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);
@@ -69,7 +78,14 @@ export async function DELETE(req: Request, ctx: Ctx) {
   const id = await parseId(ctx);
   if (!id) return jsonError("Invalid id", 400);
   try {
+    const target = getInstance(id);
     deleteInstance(id);
+    recordAudit({
+      actor: guard.user,
+      action: "instance.delete",
+      target: target ? `${target.name} (${target.baseUrl})` : `#${id}`,
+      headers: req.headers,
+    });
     return new NextResponse(null, { status: 204 });
   } catch (e) {
     return errorResponse(e);

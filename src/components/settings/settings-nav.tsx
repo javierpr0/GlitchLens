@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Building2, Server, User, Users } from "lucide-react";
+import { Building2, ScrollText, Server, User, Users } from "lucide-react";
 
 const NAV = [
   { href: "/settings/account", label: "Account", icon: User },
   { href: "/settings/organization", label: "Organization", icon: Building2 },
   { href: "/settings/instances", label: "Instances", icon: Server, admin: true },
   { href: "/settings/users", label: "Users", icon: Users, admin: true },
+  { href: "/settings/audit", label: "Audit log", icon: ScrollText, admin: true },
 ];
 
 export function SettingsNav({ isSuperadmin }: { isSuperadmin: boolean }) {

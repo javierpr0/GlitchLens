@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import { createInstance, probeInstance, probeUrl } from "@/lib/instances";
 import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
@@ -25,7 +26,15 @@ export async function POST(req: Request) {
   if (!probe.ok) return jsonError(probe.message, 400);
 
   try {
-    return NextResponse.json({ id: createInstance(parsed.data) }, { status: 201 });
+    const id = createInstance(parsed.data);
+    recordAudit({
+      actor: guard.user,
+      action: "instance.create",
+      target: `${parsed.data.name} (${parsed.data.baseUrl})`,
+      detail: { tokenMode: parsed.data.tokenMode },
+      headers: req.headers,
+    });
+    return NextResponse.json({ id }, { status: 201 });
   } catch (e) {
     return errorResponse(e);
   }

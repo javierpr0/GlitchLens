@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { createSession, setSessionCookie } from "@/lib/auth";
 import { crossOriginResponse, isSameOrigin } from "@/lib/bff-guard";
 import { clientIp } from "@/lib/login-throttle";
@@ -32,7 +33,12 @@ export async function POST(req: Request) {
       return jsonError("Invalid email or password.", 401);
     }
     const res = NextResponse.json({ ok: true });
-    setSessionCookie(res, req, createSession(result.user.id));
+    setSessionCookie(
+      res,
+      req,
+      createSession(result.user.id, { userAgent: req.headers.get("user-agent"), ip: clientIp(req.headers) }),
+    );
+    recordAudit({ actor: result.user, action: "login", headers: req.headers });
     return res;
   } catch (e) {
     return errorResponse(e);

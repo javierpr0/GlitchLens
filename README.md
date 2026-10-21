@@ -15,6 +15,8 @@ GlitchLens keeps everything it needs in a local SQLite file. There is no externa
 - Instance settings are managed inside the app (URL + API token, with a connection test). Tokens are encrypted at rest.
 - Per instance, choose **one shared token** or **one token per user**, so GlitchTip can attribute actions to the real person.
 - Dashboard, issues (filters, bulk actions, comments), performance, releases, alerts, uptime, logs, teams and projects.
+- **Audit log** (superadmin): sign-ins, lockouts and changes to users, instances and tokens, kept 180 days. Never stores passwords or tokens.
+- **Session management**: see and revoke your own sessions, sign out everywhere else. Sessions expire after 7 days idle or 14 days in total.
 - Installable as a PWA, responsive, dark theme.
 
 ## Requirements
@@ -94,7 +96,7 @@ All optional. See [`.env.example`](.env.example).
 
 ## Security notes
 
-- Passwords are hashed with scrypt. Sessions are random tokens stored hashed in the database and can be revoked server side. Changing a password or disabling an account signs the user out everywhere.
+- Passwords are hashed with scrypt. Sessions are random tokens stored hashed in the database and can be revoked server side. Changing a password or disabling an account signs the user out everywhere, and sessions expire after 7 days without activity (14 days at most).
 - Five failed logins lock that account for 15 minutes. With `GLITCHLENS_TRUST_PROXY=true` the source IP is throttled too.
 - If the encryption key lives next to the database (the default), it protects tokens only against someone who gets the database file alone, for example from a backup. For stronger separation set `GLITCHLENS_SECRET` from your secret manager.
 - Only a superadmin can set an instance URL. GlitchLens will call any `http(s)` address you give it, including private ones, because self-hosted GlitchTip usually lives there.

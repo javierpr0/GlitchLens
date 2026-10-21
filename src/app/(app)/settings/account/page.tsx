@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AccountForms } from "@/components/settings/account-forms";
 import { PersonalTokens } from "@/components/settings/personal-tokens";
-import { requireUser } from "@/lib/auth";
+import { SessionsList } from "@/components/settings/sessions-list";
+import { getSessionHash, listSessions, requireUser } from "@/lib/auth";
 import { instanceIdsWithUserToken, listInstancesForUser } from "@/lib/instances";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ const ROLE_LABEL = { superadmin: "Superadmin", member: "Member", viewer: "Viewer
 
 export default async function AccountPage() {
   const user = await requireUser();
+  const sessions = listSessions(user.id, await getSessionHash());
   const withToken = instanceIdsWithUserToken(user.id);
   const personal = listInstancesForUser(user)
     .filter((i) => i.tokenMode === "per_user")
@@ -37,6 +39,7 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
       <PersonalTokens rows={personal} />
+      <SessionsList sessions={sessions} />
     </div>
   );
 }

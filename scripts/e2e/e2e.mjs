@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:3100";
 const DATA = process.env.DATA;
@@ -298,6 +299,48 @@ r = await neo.req("/api/account/tokens", { method: "POST", body: { instanceId: i
 ok(r.status === 404, "personal tokens no longer accepted once instance is shared", `${r.status}`);
 r = await neo.req("/api/glitchtip/projects/acme/web", { method: "DELETE" });
 ok(r.status === 403, "after switching to shared, local role limits apply again", `${r.status}`);
+
+
+// 14. audit log
+r = await admin2.req("/settings/audit");
+ok(["setup.complete", "user.create", "instance.create", "instance.update", "user.update", "login.locked", "account.password_change", "token.set"].every((a) => r.text.includes(a)), "audit log records setup, user, instance, token and lockout events", `${r.status}`);
+ok(!/ghost@example\.com|ghost\d+@example\.com|burst\d+@/.test(r.text), "audit log does not record failures for made-up emails");
+ok(!/tokA-secret|tokB-secret|tokC-neo|supersecret123|memberpass123|newmemberpass456|neopassword123/.test(r.text), "audit log never contains passwords or tokens");
+r = await neo.req("/settings/audit");
+ok(!/user\.create/.test(r.text) && /Lost in the stack/.test(r.text), "audit log is superadmin only");
+
+// 15. session management
+await admin2.req("/api/admin/users", { method: "POST", body: { name: "Sam", email: "sam@example.com", password: "sampassword123", role: "member" } });
+const login = async (ua) => { const c = new Client(); await c.req("/api/auth/login", { method: "POST", headers: { "user-agent": ua }, body: { email: "sam@example.com", password: "sampassword123" } }); return c; };
+const s1 = await login("TestAgent/1.0 (Mac OS X)"), s2 = await login("TestAgent/2.0"), s3 = await login("TestAgent/3.0");
+r = await s1.req("/api/account/sessions");
+ok(r.json?.sessions?.length === 3 && r.json.sessions.filter((x) => x.current).length === 1, "lists own sessions and marks the current one", r.text);
+ok(r.json?.sessions?.some((x) => x.userAgent === "TestAgent/1.0 (Mac OS X)" && x.current), "session records the user agent");
+ok(!r.text.includes("token_hash") && r.json.sessions.every((x) => x.id.length === 12), "session handles are short prefixes, not full hashes");
+const other = r.json.sessions.find((x) => !x.current);
+const cur = r.json.sessions.find((x) => x.current);
+r = await s1.req("/api/account/sessions", { method: "DELETE", body: { id: cur.id } });
+ok(r.status === 404, "cannot revoke the current session through the list", `${r.status}`);
+r = await s1.req("/api/account/sessions", { method: "DELETE", body: { id: "zz" } });
+ok(r.status === 404, "malformed session handle is rejected", `${r.status}`);
+const neoList = await neo.req("/api/account/sessions");
+r = await s1.req("/api/account/sessions", { method: "DELETE", body: { id: neoList.json.sessions[0].id } });
+ok(r.status === 404, "cannot revoke another user's session", `${r.status}`);
+r = await s1.req("/api/account/sessions", { method: "DELETE", body: { id: other.id } });
+ok(r.status === 204, "revokes one other session", `${r.status}`);
+const statuses = [(await s2.req("/api/account", { method: "PATCH", body: { name: "Sam" } })).status, (await s3.req("/api/account", { method: "PATCH", body: { name: "Sam" } })).status].sort();
+ok(statuses[0] === 200 && statuses[1] === 401, "exactly the revoked session stopped working", JSON.stringify(statuses));
+r = await s1.req("/api/account/sessions", { method: "DELETE", body: { others: true } });
+ok(r.status === 200 && r.json?.revoked === 1, "sign out everywhere else", r.text);
+r = await s1.req("/api/account", { method: "PATCH", body: { name: "Sam" } });
+ok(r.status === 200, "current session survives sign out everywhere else", `${r.status}`);
+const rawDb = new DatabaseSync(`${DATA}/glitchlens.db`);
+rawDb.prepare("UPDATE sessions SET last_used_at = ? WHERE user_id = (SELECT id FROM users WHERE email = 'sam@example.com')").run(Date.now() - 8 * 24 * 3600 * 1000);
+rawDb.close();
+r = await s1.req("/api/account", { method: "PATCH", body: { name: "Sam" } });
+ok(r.status === 401, "session idle for more than 7 days expires", `${r.status}`);
+r = await admin2.req("/settings/audit");
+ok(/session\.revoke_others/.test(r.text) && /session\.revoke/.test(r.text), "session revocations are audited");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

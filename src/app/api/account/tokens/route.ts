@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import {
   deleteUserToken,
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
   const probe = await probeInstance(instance.baseUrl, parsed.data.token);
   if (!probe.ok) return jsonError(probe.message, 400);
   setUserToken(guard.user.id, instance.id, parsed.data.token);
+  recordAudit({ actor: guard.user, action: "token.set", target: instance.name, headers: req.headers });
   return NextResponse.json({ ok: true, account: probe.account });
 }
 
@@ -43,5 +45,6 @@ export async function DELETE(req: Request) {
   if (parsed.response) return parsed.response;
   if (!ownInstance(guard.user, parsed.data.instanceId)) return jsonError("Instance not found.", 404);
   deleteUserToken(guard.user.id, parsed.data.instanceId);
+  recordAudit({ actor: guard.user, action: "token.remove", target: `instance #${parsed.data.instanceId}`, headers: req.headers });
   return new NextResponse(null, { status: 204 });
 }

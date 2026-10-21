@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { recordAudit } from "@/lib/audit";
 import { createSession, setSessionCookie } from "@/lib/auth";
 import { clearSetupCode, setupPending, verifySetupCode } from "@/lib/bootstrap";
 import { crossOriginResponse, isSameOrigin } from "@/lib/bff-guard";
 import { hashPassword } from "@/lib/crypto";
+import { clientIp } from "@/lib/login-throttle";
 import { PASSWORD_MAX, PASSWORD_MIN, createFirstSuperadmin } from "@/lib/users";
 import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
 
@@ -28,7 +30,8 @@ export async function POST(req: Request) {
     const id = createFirstSuperadmin({ email, name, passwordHash: await hashPassword(password) });
     clearSetupCode();
     const res = NextResponse.json({ ok: true });
-    setSessionCookie(res, req, createSession(id));
+    setSessionCookie(res, req, createSession(id, { userAgent: req.headers.get("user-agent"), ip: clientIp(req.headers) }));
+    recordAudit({ actor: { id, email }, action: "setup.complete", target: email, headers: req.headers });
     return res;
   } catch (e) {
     return errorResponse(e);
