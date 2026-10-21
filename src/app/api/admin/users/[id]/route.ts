@@ -1,0 +1,60 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { guardRequest } from "@/lib/bff-guard";
+import { hashPassword } from "@/lib/crypto";
+import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
+import { PASSWORD_MAX, PASSWORD_MIN, ROLES, deleteUser, updateUser, type Role } from "@/lib/users";
+
+const Body = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  email: z.email().max(254).optional(),
+  password: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX).optional(),
+  role: z.enum(ROLES as [string, ...string[]]).optional(),
+  active: z.boolean().optional(),
+  instanceIds: z.array(z.number().int().positive()).max(500).optional(),
+});
+
+type Ctx = { params: Promise<{ id: string }> };
+
+async function parseId(ctx: Ctx): Promise<number | null> {
+  const id = Number((await ctx.params).id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+export async function PATCH(req: Request, ctx: Ctx) {
+  const guard = await guardRequest(req, { superadmin: true });
+  if (guard.response) return guard.response;
+  const id = await parseId(ctx);
+  if (!id) return jsonError("Invalid id", 400);
+  const parsed = await readJson(req, Body);
+  if (parsed.response) return parsed.response;
+  const { password, role, ...rest } = parsed.data;
+
+  try {
+    updateUser(
+      id,
+      {
+        ...rest,
+        role: role as Role | undefined,
+        passwordHash: password ? await hashPassword(password) : undefined,
+      },
+      guard.user.id,
+    );
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+export async function DELETE(req: Request, ctx: Ctx) {
+  const guard = await guardRequest(req, { superadmin: true });
+  if (guard.response) return guard.response;
+  const id = await parseId(ctx);
+  if (!id) return jsonError("Invalid id", 400);
+  try {
+    deleteUser(id, guard.user.id);
+    return new NextResponse(null, { status: 204 });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}

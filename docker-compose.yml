@@ -1,0 +1,18 @@
+services:
+  glitchlens:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - glitchlens-data:/data
+    environment:
+      # Optional: create the superadmin at startup instead of using /setup.
+      # GLITCHLENS_ADMIN_EMAIL: admin@example.com
+      # GLITCHLENS_ADMIN_PASSWORD: change-me-please
+      # Optional: keep the encryption key outside the data volume.
+      # GLITCHLENS_SECRET: a-random-string-of-at-least-32-characters
+      GLITCHLENS_DATA_DIR: /data
+    restart: unless-stopped
+
+volumes:
+  glitchlens-data:
