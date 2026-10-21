@@ -1,7 +1,7 @@
 "use client";
 
 import type { ExceptionValue, StackFrame } from "@/lib/glitchtip/types";
-import { cn } from "@/lib/utils";
+import { cn, safeHttpUrl } from "@/lib/utils";
 import { ChevronRight, FileCode2, Info, Layers } from "lucide-react";
 import { useState } from "react";
 
@@ -148,7 +148,7 @@ function Frame({
               <>
                 <span className="text-muted-foreground">URL</span>
                 <a
-                  href={frame.absPath}
+                  href={safeHttpUrl(frame.absPath)}
                   target="_blank"
                   rel="noreferrer"
                   className="break-all font-mono text-foreground/80 hover:text-primary"

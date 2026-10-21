@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { IssueStatus } from "@/lib/glitchtip/types";
+import { safeHttpUrl } from "@/lib/utils";
 import { Check, ChevronDown, ExternalLink, EyeOff, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
@@ -82,7 +83,10 @@ export function IssueActions({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => window.open(permalink, "_blank")}
+            onClick={() => {
+              const url = safeHttpUrl(permalink);
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
+            }}
             className="gap-2"
           >
             <ExternalLink className="h-3.5 w-3.5" /> Open in GlitchTip

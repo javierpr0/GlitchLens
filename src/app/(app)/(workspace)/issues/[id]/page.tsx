@@ -12,7 +12,7 @@ import { IssueSidebar } from "@/components/issues/issue-sidebar";
 import { api, GlitchTipError } from "@/lib/glitchtip/api";
 import { absoluteTime, levelColor, relativeTime } from "@/lib/format";
 import type { ExceptionValue, Breadcrumb } from "@/lib/glitchtip/types";
-import { cn } from "@/lib/utils";
+import { cn, safeHttpUrl } from "@/lib/utils";
 import { ArrowDown, ArrowLeft, Globe } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -100,7 +100,7 @@ export default async function IssueDetailPage({
                   </span>
                 )}
                 <a
-                  href={requestUrl}
+                  href={safeHttpUrl(requestUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="break-all font-mono text-foreground/90 hover:text-primary"
