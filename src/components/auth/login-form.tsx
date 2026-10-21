@@ -7,6 +7,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
+/** Same-origin paths only. Parsing as the browser does catches tricks like "/\t/evil.com" that a prefix check misses. */
+function safeRedirectTarget(raw: string | null): string {
+  if (!raw) return "/";
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return "/";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+}
+
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -32,11 +44,7 @@ export function LoginForm() {
       setError(data.error ?? "Could not reach the server.");
       return;
     }
-    const raw = params.get("from") || "/";
-    // Only allow internal paths — block //evil.com, https://evil.com, /\evil.com
-    const from =
-      raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "/";
-    router.replace(from);
+    router.replace(safeRedirectTarget(params.get("from")));
     router.refresh();
   }
 

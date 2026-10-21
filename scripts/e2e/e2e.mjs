@@ -70,6 +70,13 @@ for (let i = 0; i < 30; i++) await spoof.req("/api/auth/login", { method: "POST"
 r = await spoof.req("/api/auth/login", { method: "POST", headers: { "x-forwarded-for": "1.2.3.4" }, body: { email: "ghost@spoof.example", password: "x" } });
 ok(r.status === 429, "per-account lock holds even when X-Forwarded-For rotates", `${r.status}`);
 
+// 3c. a real account stays locked even after a flood of fake emails (counters for real accounts are never evicted)
+await admin.req("/api/admin/users", { method: "POST", body: { name: "Lock", email: "lock@example.com", password: "lockpassword123", role: "viewer" } });
+for (let i = 0; i < 5; i++) await new Client().req("/api/auth/login", { method: "POST", body: { email: "lock@example.com", password: "wrong-wrong-wrong" } });
+for (let i = 0; i < 60; i++) await flood.req("/api/auth/login", { method: "POST", body: { email: `fill${i}@example.com`, password: "nopenopenope" } });
+r = await new Client().req("/api/auth/login", { method: "POST", body: { email: "lock@example.com", password: "lockpassword123" } });
+ok(r.status === 429, "real account lock survives a flood of fake emails (even with the right password)", `${r.status}`);
+
 // 4. instances (superadmin)
 r = await admin.req("/settings/instances");
 ok(r.status === 200, "superadmin sees /settings/instances", `${r.status}`);
@@ -152,6 +159,16 @@ r = await vic.req("/api/glitchtip/organizations/acme/teams", { method: "POST", b
 ok(r.status === 403, "viewer cannot POST via proxy", `${r.status}`);
 r = await vic.req("/api/glitchtip/organizations/acme/issues");
 ok(r.status === 200, "viewer can read via proxy", `${r.status}`);
+
+// 7b. the token owner's own account is off limits through a shared token
+for (const [who, c] of [["member", mia], ["viewer", vic]]) {
+  for (const p of ["/api/glitchtip/users/me", "/api/glitchtip/api-tokens"]) {
+    r = await c.req(p);
+    ok(r.status === 403, `${who} cannot even read ${p} via a shared token`, `${r.status}`);
+  }
+}
+r = await admin.req("/api/glitchtip/users/me");
+ok(r.status === 200, "superadmin can read users/me via proxy", `${r.status}`);
 
 // 8. superadmin safety
 r = await admin.req("/api/admin/users/1", { method: "PATCH", body: { role: "member" } });
@@ -248,6 +265,22 @@ r = await neo.req("/api/account/tokens", { method: "DELETE", body: { instanceId:
 ok(r.status === 204, "personal token can be removed", `${r.status}`);
 r = await neo.req("/issues");
 ok(/Add your GlitchTip token/.test(r.text), "after removal the user is asked again");
+await neo.req("/api/account/tokens", { method: "POST", body: { instanceId: idC, token: "tokC-neo" } });
+r = await neo.req("/api/glitchtip/users/me");
+ok(r.status === 200, "per-user mode: own account readable (GlitchTip enforces)", `${r.status}`);
+r = await admin2.req("/api/admin/instances/test", { method: "POST", body: { instanceId: idA, baseUrl: "http://127.0.0.1:4102" } });
+ok(r.status === 400, "test endpoint will not replay a stored token against a different URL", `${r.status} ${r.text}`);
+r = await admin2.req("/api/admin/instances/test", { method: "POST", body: { instanceId: idB } });
+ok(r.status === 200 && r.json?.ok === true, "test endpoint still works with the stored token and URL", `${r.status} ${r.text}`);
+r = await admin2.req(`/api/admin/instances/${idB}`, { method: "PATCH", body: { baseUrl: "http://127.0.0.1:4101" } });
+ok(r.status === 400, "changing a shared instance URL requires entering the token again", `${r.status} ${r.text}`);
+const logBefore = (await mockLog(4101)).length;
+await admin2.req(`/api/admin/instances/${idB}`, { method: "PATCH", body: { baseUrl: "http://127.0.0.1:4101/" } });
+ok((await mockLog(4101)).length === logBefore, "the stored token was never sent to the new URL");
+r = await admin2.req(`/api/admin/instances/${idC}`, { method: "PATCH", body: { baseUrl: "http://localhost:4103" } });
+ok(r.status === 200, "per-user instance URL can change", `${r.status} ${r.text}`);
+r = await neo.req("/issues");
+ok(/Add your GlitchTip token/.test(r.text), "personal tokens are wiped when the instance URL changes", `${r.status}`);
 r = await admin2.req(`/api/admin/instances/${idC}`, { method: "PATCH", body: { tokenMode: "shared" } });
 ok(r.status === 400, "switching to shared requires a shared token", `${r.status} ${r.text}`);
 r = await admin2.req(`/api/admin/instances/${idC}`, { method: "PATCH", body: { tokenMode: "shared", token: "tokC-shared" } });

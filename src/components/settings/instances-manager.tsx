@@ -100,7 +100,8 @@ export function InstancesManager({ instances }: { instances: Instance[] }) {
   }
 
   // A shared instance needs a token unless we are only editing one that already has it.
-  const needsToken = tokenMode === "shared" && (!editing || editing.tokenMode !== "shared");
+  const urlChanged = !!editing && baseUrl.trim().replace(/\/+$/, "") !== editing.baseUrl;
+  const needsToken = tokenMode === "shared" && (!editing || editing.tokenMode !== "shared" || urlChanged);
   const canSave = name.trim() && baseUrl.trim() && (!needsToken || token.trim());
 
   return (
@@ -201,7 +202,7 @@ export function InstancesManager({ instances }: { instances: Instance[] }) {
                 autoComplete="off"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder={editing?.tokenMode === "shared" ? "Leave blank to keep the current token" : "Paste the token"}
+                placeholder={editing?.tokenMode === "shared" && !urlChanged ? "Leave blank to keep the current token" : "Paste the token"}
                 className="bg-background"
               />
               <p className="text-xs text-muted-foreground">

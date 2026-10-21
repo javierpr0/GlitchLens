@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardRequest } from "@/lib/bff-guard";
 import { glitchtipFetch } from "@/lib/glitchtip/client";
-import { canMutate } from "@/lib/permissions";
+import { canAccess } from "@/lib/permissions";
 import { NoInstanceError, getInstanceContext } from "@/lib/instances";
 import { errorResponse, jsonError } from "@/lib/route-utils";
 
@@ -19,8 +19,8 @@ async function proxy(req: Request, params: Params, method: "GET" | "POST" | "PUT
   const subpath = segments.join("/");
   const ctx = await getInstanceContext();
   if (ctx.kind !== "ok") return errorResponse(new NoInstanceError(ctx.kind));
-  if (!canMutate(guard.user.role, method, subpath, ctx.instance.tokenMode)) {
-    return jsonError("Your role does not allow this action.", 403);
+  if (!canAccess(guard.user.role, method, subpath, ctx.instance.tokenMode)) {
+    return jsonError("Your role does not allow this request.", 403);
   }
 
   let body: unknown = undefined;

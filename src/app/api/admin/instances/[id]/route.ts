@@ -48,6 +48,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
         if (!probe.ok) return jsonError(probe.message, 400);
       }
     } else if (urlChanged || patch.token || current.tokenMode !== "shared") {
+      // A stored token is only ever sent to the URL it was saved with.
+      if (urlChanged && !patch.token) return jsonError("Enter the token again when you change the URL.", 400);
       const token = patch.token ?? (current.tokenMode === "shared" ? getInstanceToken(id) : null);
       if (!token) return jsonError("Enter the shared token for this instance.", 400);
       // Same rule as creation: only store connections that work.

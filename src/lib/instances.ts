@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/db";
+import { getDb, transaction } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { getCurrentUser } from "@/lib/auth";
 import type { CurrentUser } from "@/lib/users";
@@ -137,18 +137,21 @@ export function updateInstance(
   const current = getInstance(id);
   if (!current) throw new InstanceError("not_found", "Instance not found.");
   const mode = patch.tokenMode ?? current.tokenMode;
+  const newUrl = patch.baseUrl ? normalizeBaseUrl(patch.baseUrl) : current.baseUrl;
   // per_user instances keep no shared token; shared ones keep the stored one unless a new one is given.
   const tokenEnc = mode === "per_user" ? "" : patch.token ? encryptSecret(patch.token.trim()) : null;
   try {
-    getDb()
-      .prepare("UPDATE instances SET name = ?, base_url = ?, token_mode = ?, token_enc = COALESCE(?, token_enc) WHERE id = ?")
-      .run(
+    transaction((db) => {
+      db.prepare("UPDATE instances SET name = ?, base_url = ?, token_mode = ?, token_enc = COALESCE(?, token_enc) WHERE id = ?").run(
         patch.name?.trim() ?? current.name,
-        patch.baseUrl ? normalizeBaseUrl(patch.baseUrl) : current.baseUrl,
+        newUrl,
         mode,
         tokenEnc,
         id,
       );
+      // Personal tokens were issued for the old server: never replay them against a different one.
+      if (newUrl !== current.baseUrl) db.prepare("DELETE FROM user_tokens WHERE instance_id = ?").run(id);
+    });
   } catch (e) {
     if (isUnique(e)) throw new InstanceError("url_taken", "That GlitchTip URL is already configured.");
     throw e;

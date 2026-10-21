@@ -210,7 +210,7 @@ export async function verifyLogin(email: string, password: string, ip: string | 
   const row = getDb().prepare("SELECT * FROM users WHERE email = ?").get(email.trim()) as UserRow | undefined;
   const valid = await verifyPassword(password, row?.password_hash ?? null);
   if (!row || !valid || !row.active) {
-    recordFailure(email, ip);
+    recordFailure(email, ip, !!row);
     return { ok: false, reason: "invalid" };
   }
   clearFailures(email);
