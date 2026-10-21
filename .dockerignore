@@ -7,4 +7,4 @@ data
 !.env.example
 docs
 *.log
-scripts
+scripts/e2e

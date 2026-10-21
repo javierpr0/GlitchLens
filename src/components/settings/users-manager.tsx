@@ -48,6 +48,7 @@ export function UsersManager({
   const [role, setRole] = useState<Role>("member");
   const [active, setActive] = useState(true);
   const [instanceIds, setInstanceIds] = useState<number[]>([]);
+  const [resetTwoFactor, setResetTwoFactor] = useState(false);
   const [saving, setSaving] = useState(false);
 
   function openFor(user: UserSummary | null) {
@@ -58,6 +59,7 @@ export function UsersManager({
     setRole(user?.role ?? "member");
     setActive(user?.active ?? true);
     setInstanceIds(user?.instanceIds ?? []);
+    setResetTwoFactor(false);
     setOpen(true);
   }
 
@@ -70,6 +72,7 @@ export function UsersManager({
       instanceIds: role === "superadmin" ? [] : instanceIds,
       ...(password ? { password } : {}),
       ...(editing ? { active } : {}),
+      ...(editing && resetTwoFactor ? { resetTwoFactor: true as const } : {}),
     };
     const res = await fetch(editing ? `/api/admin/users/${editing.id}` : "/api/admin/users", {
       method: editing ? "PATCH" : "POST",
@@ -120,6 +123,7 @@ export function UsersManager({
                 <span className="truncate font-medium">{u.name}</span>
                 <Badge variant="outline" className="text-[10px] capitalize">{u.role}</Badge>
                 {!u.active && <Badge variant="outline" className="text-[10px] text-amber-400">Disabled</Badge>}
+                {u.twoFactor && <Badge variant="outline" className="text-[10px] text-emerald-400">2FA</Badge>}
                 {u.id === currentUserId && <Badge variant="outline" className="text-[10px]">You</Badge>}
               </div>
               <div className="truncate text-xs text-muted-foreground">
@@ -203,6 +207,12 @@ export function UsersManager({
                   </div>
                 )}
               </div>
+            )}
+            {editing?.twoFactor && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox checked={resetTwoFactor} onCheckedChange={(v) => setResetTwoFactor(!!v)} />
+                Reset two-factor (lost device) and sign the user out
+              </label>
             )}
             {editing && (
               <label className="flex cursor-pointer items-center gap-2 text-sm">

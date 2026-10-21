@@ -3,6 +3,7 @@ import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
 import { getSessionHash } from "@/lib/auth";
 import { guardRequest } from "@/lib/bff-guard";
+import { clientIp } from "@/lib/login-throttle";
 import { errorResponse, readJson } from "@/lib/route-utils";
 import { PASSWORD_MAX, PASSWORD_MIN, changeOwnPassword } from "@/lib/users";
 
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   const parsed = await readJson(req, Body);
   if (parsed.response) return parsed.response;
   try {
-    await changeOwnPassword(guard.user.id, parsed.data.current, parsed.data.next, (await getSessionHash()) ?? "");
+    await changeOwnPassword(guard.user, parsed.data.current, parsed.data.next, (await getSessionHash()) ?? "", clientIp(req.headers));
     recordAudit({ actor: guard.user, action: "account.password_change", headers: req.headers });
     return NextResponse.json({ ok: true });
   } catch (e) {

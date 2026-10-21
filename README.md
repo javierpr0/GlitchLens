@@ -15,6 +15,7 @@ GlitchLens keeps everything it needs in a local SQLite file. There is no externa
 - Instance settings are managed inside the app (URL + API token, with a connection test). Tokens are encrypted at rest.
 - Per instance, choose **one shared token** or **one token per user**, so GlitchTip can attribute actions to the real person.
 - Dashboard, issues (filters, bulk actions, comments), performance, releases, alerts, uptime, logs, teams and projects.
+- **Two-factor authentication** (TOTP): any authenticator app, with 10 single-use recovery codes. Each user turns it on from Settings > Account.
 - **Audit log** (superadmin): sign-ins, lockouts and changes to users, instances and tokens, kept 180 days. Never stores passwords or tokens.
 - **Session management**: see and revoke your own sessions, sign out everywhere else. Sessions expire after 7 days idle or 14 days in total.
 - Installable as a PWA, responsive, dark theme.
@@ -103,6 +104,19 @@ All optional. See [`.env.example`](.env.example).
 - Run it behind HTTPS (a reverse proxy is fine) and forward `X-Forwarded-Proto`. Add HSTS and a CSP at the proxy if you need them.
 - Single process by design: login throttling and sessions use the local database, so run one instance per data directory.
 
+## Two-factor authentication
+
+Each user can enable TOTP in **Settings > Account**: scan the QR code, confirm with a code, and save the recovery codes (shown once). From then on, signing in asks for the password and then a code. Turning it off or generating new recovery codes needs the password and a valid code. Enabling it signs the user out of their other sessions.
+
+If someone loses their device and recovery codes, a superadmin can reset their 2FA in **Settings > Users > Edit**. If the locked-out account is the only superadmin, run this on the server instead (it needs access to the data directory, the same trust level as reading the database):
+
+```bash
+npm run reset-2fa -- admin@example.com                       # from the project folder
+docker compose exec glitchlens node scripts/reset-2fa.mjs admin@example.com   # Docker
+```
+
+**Changing or losing the encryption key** (`GLITCHLENS_SECRET` or `secret.key`) makes every 2FA secret and recovery code unreadable. Those users are refused at login (it never falls back to the password alone) until a superadmin resets their 2FA.
+
 ## Backups
 
 Everything GlitchLens stores is in the data directory (`GLITCHLENS_DATA_DIR`, `/data` in Docker): `glitchlens.db` (plus `-wal` and `-shm`) and, unless you set `GLITCHLENS_SECRET`, `secret.key`.
@@ -143,7 +157,7 @@ The browser never talks to GlitchTip. Route handlers under `src/app/api` do, usi
 
 ## Known limitations
 
-No two-factor authentication and no `Content-Security-Policy` header yet. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
+No `Content-Security-Policy` header yet. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
 
 ## License
 

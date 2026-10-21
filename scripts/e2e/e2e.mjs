@@ -1,5 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { createHmac } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:3100";
 const DATA = process.env.DATA;
@@ -341,6 +345,184 @@ r = await s1.req("/api/account", { method: "PATCH", body: { name: "Sam" } });
 ok(r.status === 401, "session idle for more than 7 days expires", `${r.status}`);
 r = await admin2.req("/settings/audit");
 ok(/session\.revoke_others/.test(r.text) && /session\.revoke/.test(r.text), "session revocations are audited");
+
+
+// 16. two-factor authentication
+// An independent TOTP implementation, checked against the RFC 6238 test vector, so the app is not tested against itself.
+const b32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const b32dec = (t) => { let bits = 0, v = 0; const out = []; for (const ch of t) { v = (v << 5) | b32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); };
+const hotp = (key, step, digits = 6) => { const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(step)); const h = createHmac("sha1", key).update(c).digest(); const o = h[h.length - 1] & 15; return String((h.readUInt32BE(o) & 0x7fffffff) % 10 ** digits).padStart(digits, "0"); };
+ok(hotp(Buffer.from("12345678901234567890"), 1, 8) === "94287082", "test TOTP helper matches the RFC 6238 vector");
+const stepNow = () => Math.floor(Date.now() / 30000);
+const codeFor = (secret, offset = 0) => hotp(b32dec(secret), stepNow() + offset);
+const withDb = (fn) => { const d = new DatabaseSync(`${DATA}/glitchlens.db`); try { return fn(d); } finally { d.close(); } };
+const clearAttempts = () => withDb((d) => d.exec("DELETE FROM login_attempts"));
+const freeStep = () => withDb((d) => d.exec("UPDATE users SET totp_last_step = 0"));
+
+r = await admin2.req("/api/admin/users", { method: "POST", body: { name: "Tia", email: "tia@example.com", password: "tiapassword123", role: "member" } });
+const tiaId = r.json?.id;
+const tiaLogin = async () => { const c = new Client(); const x = await c.req("/api/auth/login", { method: "POST", body: { email: "tia@example.com", password: "tiapassword123" } }); return { c, x }; };
+let { c: t1 } = await tiaLogin();
+const { c: t2 } = await tiaLogin();
+
+r = await t1.req("/api/account/2fa/setup", { method: "POST" });
+ok(r.status === 200 && /^data:image\/svg\+xml;base64,/.test(r.json?.qr ?? "") && /^[A-Z2-7]{32}$/.test(r.json?.secret ?? ""), "2FA setup returns a QR image and a 160-bit base32 secret", r.text.slice(0, 120));
+const secret = r.json.secret;
+r = await t1.req("/api/account/2fa/enable", { method: "POST", body: { password: "tiapassword123", code: "000000" } });
+ok(r.status === 400, "enabling with a wrong code fails", `${r.status}`);
+r = await t1.req("/api/account/2fa/enable", { method: "POST", body: { code: codeFor(secret) } });
+ok(r.status === 400, "enabling 2FA without the password is refused", `${r.status}`);
+r = await t1.req("/api/account/2fa/enable", { method: "POST", body: { password: "wrong-password", code: codeFor(secret) } });
+ok(r.status === 400, "enabling 2FA with a wrong password is refused", `${r.status}`);
+r = await t2.req("/api/account", { method: "PATCH", body: { name: "Tia" } });
+ok(r.status === 200, "a refused enable does not end other sessions", `${r.status}`);
+clearAttempts();
+r = await t1.req("/api/account/2fa/enable", { method: "POST", body: { password: "tiapassword123", code: codeFor(secret) } });
+const recovery = r.json?.recoveryCodes ?? [];
+ok(r.status === 200 && recovery.length === 10 && recovery.every((c) => /^[A-Z2-7]{5}-[A-Z2-7]{5}$/.test(c)), "enabling returns 10 recovery codes", r.text.slice(0, 120));
+r = await t2.req("/api/account", { method: "PATCH", body: { name: "Tia" } });
+ok(r.status === 401, "enabling 2FA signs out the user's other sessions", `${r.status}`);
+r = await t1.req("/api/account", { method: "PATCH", body: { name: "Tia" } });
+ok(r.status === 200, "the session that enabled 2FA stays signed in", `${r.status}`);
+r = await t1.req("/api/account/2fa/setup", { method: "POST" });
+ok(r.status === 409, "cannot restart setup while 2FA is on", `${r.status}`);
+
+// password alone no longer signs in
+let { c: pw, x } = await tiaLogin();
+ok(x.status === 200 && x.json?.twoFactor === true && x.json?.challenge && !pw.jar.glitchlens_session, "correct password alone returns a challenge and no session", x.text);
+r = await pw.req("/api/account", { method: "PATCH", body: { name: "x" } });
+ok(r.status === 401, "no access is possible with only the password step");
+// the code that confirmed enrolment cannot be reused
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: codeFor(secret) } });
+ok(r.status === 401, "the enrolment code cannot be replayed as a login code", `${r.status}`);
+clearAttempts();
+({ c: pw, x } = await tiaLogin());
+const good = codeFor(secret, 1);
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: good } });
+ok(r.status === 200 && pw.jar.glitchlens_session, "password plus a valid code signs in", `${r.status} ${r.text}`);
+r = await pw.req("/api/account/sessions");
+ok(r.status === 200, "the new session works");
+// replay of the same code
+({ c: pw, x } = await tiaLogin());
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: good } });
+ok(r.status === 401, "a code that already worked cannot be used again", `${r.status}`);
+clearAttempts(); freeStep();
+// a used challenge cannot be reused
+({ c: pw, x } = await tiaLogin());
+const ch1 = x.json.challenge;
+await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: ch1, code: codeFor(secret) } });
+freeStep();
+r = await new Client().req("/api/auth/login/2fa", { method: "POST", body: { challenge: ch1, code: codeFor(secret) } });
+ok(r.status === 401, "a consumed challenge cannot be reused", `${r.status}`);
+// expired challenge
+clearAttempts(); freeStep();
+({ c: pw, x } = await tiaLogin());
+withDb((d) => d.exec("UPDATE login_challenges SET expires_at = 1"));
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: codeFor(secret) } });
+ok(r.status === 401, "an expired challenge is rejected", `${r.status}`);
+// per-challenge attempt cap
+clearAttempts(); freeStep();
+({ c: pw, x } = await tiaLogin());
+for (let i = 0; i < 5; i++) await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: "000000" } });
+clearAttempts();
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: codeFor(secret) } });
+ok(r.status === 401, "a challenge dies after 5 attempts, even for the right code", `${r.status}`);
+// account lock across fresh challenges
+clearAttempts(); freeStep();
+let lockedStatus = 0;
+for (let i = 0; i < 7; i++) {
+  const { c, x: lx } = await tiaLogin();
+  if (!lx.json?.challenge) { lockedStatus = lx.status; break; }
+  const rr = await c.req("/api/auth/login/2fa", { method: "POST", body: { challenge: lx.json.challenge, code: "000000" } });
+  if (rr.status === 429) { lockedStatus = 429; break; }
+}
+ok(lockedStatus === 429, "guessing codes across new challenges still hits the account lock", `${lockedStatus}`);
+r = (await tiaLogin()).x;
+ok(r.status === 429, "even the right password is refused while locked", `${r.status}`);
+clearAttempts(); freeStep();
+// recovery code works once
+({ c: pw, x } = await tiaLogin());
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: recovery[0].toLowerCase() } });
+ok(r.status === 200, "a recovery code signs in (case and dash insensitive)", `${r.status} ${r.text}`);
+({ c: pw, x } = await tiaLogin());
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: recovery[0] } });
+ok(r.status === 401, "a recovery code works only once", `${r.status}`);
+clearAttempts();
+// account changes between the two steps invalidate the challenge
+({ c: pw, x } = await tiaLogin());
+await admin2.req(`/api/admin/users/${tiaId}`, { method: "PATCH", body: { password: "tianewpassword456" } });
+freeStep();
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: codeFor(secret) } });
+ok(r.status === 401, "a password change between the steps invalidates the challenge", `${r.status}`);
+await admin2.req(`/api/admin/users/${tiaId}`, { method: "PATCH", body: { password: "tiapassword123" } });
+clearAttempts(); freeStep();
+// unreadable secret must deny, never skip 2FA
+const goodBlob = withDb((d) => d.prepare("SELECT totp_secret_enc AS v FROM users WHERE id = ?").get(tiaId).v);
+withDb((d) => d.prepare("UPDATE users SET totp_secret_enc = 'garbage' WHERE id = ?").run(tiaId));
+({ c: pw, x } = await tiaLogin());
+ok(x.json?.twoFactor === true && !pw.jar.glitchlens_session, "unreadable 2FA secret still requires the second step");
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: codeFor(secret) } });
+ok(r.status === 401 && /unavailable/.test(r.json?.error ?? "") && !pw.jar.glitchlens_session, "unreadable 2FA secret denies the login instead of skipping it", `${r.status} ${r.text}`);
+withDb((d) => d.prepare("UPDATE users SET totp_secret_enc = ? WHERE id = ?").run(goodBlob, tiaId));
+clearAttempts(); freeStep();
+// the admin password reset above ended every session, including t1: sign in again through both steps
+clearAttempts(); freeStep();
+{
+  const { c, x: lx } = await tiaLogin();
+  await c.req("/api/auth/login/2fa", { method: "POST", body: { challenge: lx.json.challenge, code: codeFor(secret, 1) } });
+  t1 = c;
+}
+clearAttempts(); freeStep();
+// sensitive actions need password + code and are throttled
+r = await t1.req("/api/account/2fa/recovery", { method: "POST", body: { password: "wrong-password", code: codeFor(secret) } });
+ok(r.status === 400, "regenerating codes needs the right password", `${r.status}`);
+r = await t1.req("/api/account/2fa/recovery", { method: "POST", body: { password: "tiapassword123", code: "000000" } });
+ok(r.status === 400, "regenerating codes needs a valid code", `${r.status}`);
+clearAttempts(); freeStep();
+r = await t1.req("/api/account/2fa/recovery", { method: "POST", body: { password: "tiapassword123", code: codeFor(secret, 1) } });
+const fresh = r.json?.recoveryCodes ?? [];
+ok(r.status === 200 && fresh.length === 10 && !fresh.includes(recovery[1]), "new recovery codes replace the old set", r.text.slice(0, 100));
+({ c: pw, x } = await tiaLogin());
+r = await pw.req("/api/auth/login/2fa", { method: "POST", body: { challenge: x.json.challenge, code: recovery[1] } });
+ok(r.status === 401, "old recovery codes stop working after regeneration", `${r.status}`);
+clearAttempts();
+let lastPw;
+for (let i = 0; i < 6; i++) lastPw = await t1.req("/api/account/password", { method: "POST", body: { current: "nope-nope-nope", next: "whatever-password-1" } });
+ok(lastPw.status === 429, "password-confirmation endpoints share the account lock", `${lastPw.status}`);
+clearAttempts(); freeStep();
+// permissions on reset
+r = await neo.req(`/api/admin/users/${tiaId}`, { method: "PATCH", body: { resetTwoFactor: true } });
+ok(r.status === 403, "a member cannot reset someone else's 2FA", `${r.status}`);
+// admin reset
+r = await admin2.req("/api/admin/users/1", { method: "PATCH", body: { resetTwoFactor: true } });
+ok(r.status === 400, "a superadmin cannot reset their own 2FA through the admin route", `${r.status}`);
+r = await admin2.req(`/api/admin/users/${tiaId}`, { method: "PATCH", body: { resetTwoFactor: true } });
+ok(r.status === 200, "a superadmin can reset a user's 2FA", r.text);
+r = await t1.req("/api/account", { method: "PATCH", body: { name: "Tia" } });
+ok(r.status === 401, "reset ends the user's sessions", `${r.status}`);
+({ c: pw, x } = await tiaLogin());
+ok(x.json?.ok === true && !x.json?.twoFactor && pw.jar.glitchlens_session, "after reset the user signs in with the password only", x.text);
+// disable flow
+r = await pw.req("/api/account/2fa/setup", { method: "POST" });
+const secret2 = r.json.secret;
+await pw.req("/api/account/2fa/enable", { method: "POST", body: { password: "tiapassword123", code: codeFor(secret2) } });
+freeStep();
+r = await pw.req("/api/account/2fa/disable", { method: "POST", body: { password: "tiapassword123", code: codeFor(secret2, 1) } });
+ok(r.status === 204, "turning 2FA off needs password and code", `${r.status}`);
+({ c: pw, x } = await tiaLogin());
+ok(!x.json?.twoFactor, "after turning it off there is no second step");
+// CLI break-glass
+r = await pw.req("/api/account/2fa/setup", { method: "POST" });
+const secret3 = r.json.secret;
+await pw.req("/api/account/2fa/enable", { method: "POST", body: { password: "tiapassword123", code: codeFor(secret3) } });
+const here = path.dirname(fileURLToPath(import.meta.url));
+const cli = execFileSync(process.execPath, [path.join(here, "../reset-2fa.mjs"), "tia@example.com"], { env: { ...process.env, GLITCHLENS_DATA_DIR: DATA }, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+ok(/Two-factor reset/.test(cli), "the reset-2fa script reports success");
+({ c: pw, x } = await tiaLogin());
+ok(!x.json?.twoFactor && x.json?.ok === true, "the reset-2fa script lets the user back in with the password");
+r = await admin2.req("/settings/audit");
+ok(["2fa.enable", "2fa.disable", "2fa.reset", "2fa.reset_cli", "login.2fa_failed", "login.2fa_unreadable", "2fa.recovery_regenerate"].every((a) => r.text.includes(a)), "2FA events are audited", "");
+ok(!r.text.includes(secret) && !r.text.includes(recovery[0]) && !r.text.includes(fresh[0]), "audit log contains no 2FA secrets or recovery codes");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

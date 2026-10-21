@@ -30,6 +30,7 @@ const USER_STATUS: Record<UserError["code"], number> = {
   setup_done: 409,
   bad_instances: 400,
   bad_password: 400,
+  locked: 429,
 };
 
 const INSTANCE_STATUS: Record<InstanceError["code"], number> = {

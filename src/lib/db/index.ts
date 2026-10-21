@@ -80,6 +80,25 @@ const MIGRATIONS: string[] = [
     ip          TEXT
   );
   `,
+  // Two-factor authentication. totp_secret_enc stays set while enrolment is pending (totp_enabled = 0).
+  // totp_last_step blocks reusing a code. Recovery codes are stored as keyed HMACs, never in clear.
+  `
+  ALTER TABLE users ADD COLUMN totp_secret_enc TEXT;
+  ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE recovery_codes (
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used_at   INTEGER,
+    PRIMARY KEY (user_id, code_hash)
+  );
+  CREATE TABLE login_challenges (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];
 
 const globalForDb = globalThis as unknown as { __glitchlensDb?: DatabaseSync };

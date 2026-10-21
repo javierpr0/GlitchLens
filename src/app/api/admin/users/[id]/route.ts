@@ -3,6 +3,7 @@ import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
 import { guardRequest } from "@/lib/bff-guard";
 import { hashPassword } from "@/lib/crypto";
+import { resetTwoFactor as resetTwoFactorFor } from "@/lib/twofactor";
 import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
 import { PASSWORD_MAX, PASSWORD_MIN, ROLES, deleteUser, updateUser, type Role } from "@/lib/users";
 
@@ -13,6 +14,7 @@ const Body = z.object({
   role: z.enum(ROLES as [string, ...string[]]).optional(),
   active: z.boolean().optional(),
   instanceIds: z.array(z.number().int().positive()).max(500).optional(),
+  resetTwoFactor: z.literal(true).optional(),
 });
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -29,7 +31,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (!id) return jsonError("Invalid id", 400);
   const parsed = await readJson(req, Body);
   if (parsed.response) return parsed.response;
-  const { password, role, ...rest } = parsed.data;
+  const { password, role, resetTwoFactor, ...rest } = parsed.data;
+  // Your own 2FA is turned off from Settings > Account, which asks for the password and a code.
+  if (resetTwoFactor && id === guard.user.id) {
+    return jsonError("Turn off your own two-factor in Settings > Account.", 400);
+  }
 
   try {
     const email = updateUser(
@@ -41,6 +47,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       },
       guard.user.id,
     );
+    // After the update succeeded, so a rejected change (for example the last-superadmin guard) leaves 2FA alone.
+    if (resetTwoFactor) resetTwoFactorFor(id);
     recordAudit({
       actor: guard.user,
       action: password ? "user.password_reset" : "user.update",
@@ -49,6 +57,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       detail: { fields: Object.keys(parsed.data).filter((k) => k !== "password"), role, active: rest.active },
       headers: req.headers,
     });
+    if (resetTwoFactor) recordAudit({ actor: guard.user, action: "2fa.reset", target: email, headers: req.headers });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

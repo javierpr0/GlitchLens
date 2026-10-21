@@ -24,28 +24,93 @@ export function LoginForm() {
   const params = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set after the password step when the account has two-factor enabled.
+  const [challenge, setChallenge] = useState<string | null>(null);
+
+  async function post(url: string, body: unknown): Promise<{ ok: boolean; data: { error?: string; twoFactor?: boolean; challenge?: string } }> {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    if (!res) return { ok: false, data: { error: "Could not reach the server." } };
+    return { ok: res.ok, data: await res.json().catch(() => ({})) };
+  }
+
+  function finish() {
+    router.replace(safeRedirectTarget(params.get("from")));
+    router.refresh();
+  }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: String(fd.get("email") ?? ""),
-        password: String(fd.get("password") ?? ""),
-      }),
-    }).catch(() => null);
+    const { ok, data } = challenge
+      ? await post("/api/auth/login/2fa", { challenge, code: String(fd.get("code") ?? "") })
+      : await post("/api/auth/login", {
+          email: String(fd.get("email") ?? ""),
+          password: String(fd.get("password") ?? ""),
+        });
     setLoading(false);
-    if (!res || !res.ok) {
-      const data = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : {};
-      setError(data.error ?? "Could not reach the server.");
+    if (!ok) {
+      setError(data.error ?? "Could not sign in.");
       return;
     }
-    router.replace(safeRedirectTarget(params.get("from")));
-    router.refresh();
+    if (data.twoFactor && data.challenge) {
+      setChallenge(data.challenge);
+      return;
+    }
+    finish();
+  }
+
+  if (challenge) {
+    return (
+      <form onSubmit={onSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="code" className="text-xs font-medium text-zinc-400">
+            Authentication code
+          </Label>
+          <Input
+            id="code"
+            name="code"
+            autoFocus
+            required
+            autoComplete="one-time-code"
+            spellCheck={false}
+            placeholder="123456"
+            className="h-11 border-white/10 bg-white/[0.03] font-mono tracking-widest focus-visible:border-violet-500/50 focus-visible:ring-violet-500/20"
+          />
+          <p className="text-xs text-zinc-500">
+            Enter the 6-digit code from your authenticator app, or one of your recovery codes.
+          </p>
+        </div>
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        <Button
+          type="submit"
+          disabled={loading}
+          className="h-11 w-full bg-violet-600 text-white shadow-lg shadow-violet-900/30 hover:bg-violet-500 focus-visible:ring-violet-500/40"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
+        </Button>
+        <button
+          type="button"
+          onClick={() => {
+            setChallenge(null);
+            setError(null);
+          }}
+          className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300"
+        >
+          Back to sign in
+        </button>
+      </form>
+    );
   }
 
   return (

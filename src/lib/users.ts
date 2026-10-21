@@ -19,6 +19,7 @@ export interface UserSummary extends CurrentUser {
   createdAt: number;
   lastLoginAt: number | null;
   instanceIds: number[];
+  twoFactor: boolean;
 }
 
 export type UserErrorCode =
@@ -28,7 +29,8 @@ export type UserErrorCode =
   | "self"
   | "setup_done"
   | "bad_instances"
-  | "bad_password";
+  | "bad_password"
+  | "locked";
 
 export class UserError extends Error {
   constructor(public code: UserErrorCode, message: string) {
@@ -49,6 +51,7 @@ interface UserRow {
   password_hash: string;
   created_at: number;
   last_login_at: number | null;
+  totp_enabled?: number;
   instance_ids?: string | null;
 }
 
@@ -76,6 +79,7 @@ export function listUsers(): UserSummary[] {
     createdAt: r.created_at,
     lastLoginAt: r.last_login_at,
     instanceIds: r.instance_ids ? r.instance_ids.split(",").map(Number) : [],
+    twoFactor: !!r.totp_enabled,
   }));
 }
 
@@ -173,7 +177,11 @@ export function updateUser(id: number, patch: UserPatch, actingUserId: number): 
 
     if (patch.instanceIds && role !== "superadmin") setInstances(id, patch.instanceIds);
     if (role === "superadmin") db.prepare("DELETE FROM user_instances WHERE user_id = ?").run(id);
-    if (patch.passwordHash || !active) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+    if (patch.passwordHash || !active) {
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      // A half-finished login must not outlive a password change or a disabled account.
+      db.prepare("DELETE FROM login_challenges WHERE user_id = ?").run(id);
+    }
     return row.email;
   });
 }
@@ -202,7 +210,7 @@ function otherActiveSuperadmins(excludingId: number): number {
 }
 
 export type LoginResult =
-  | { ok: true; user: CurrentUser }
+  | { ok: true; user: CurrentUser; needsTwoFactor: boolean }
   | { ok: false; reason: "invalid" }
   | { ok: false; reason: "busy" }
   | { ok: false; reason: "locked"; retryAfter: number };
@@ -234,28 +242,53 @@ export async function verifyLogin(email: string, password: string, ip: string | 
     }
     return { ok: false, reason: "invalid" };
   }
+  // With 2FA the login is not done yet: the counter and last_login_at move only after the code step,
+  // otherwise a stolen password would let someone guess codes forever without ever being locked.
+  if (row.totp_enabled) return { ok: true, user: toCurrent(row), needsTwoFactor: true };
+  completeLogin(row.id, email);
+  return { ok: true, user: toCurrent(row), needsTwoFactor: false };
+}
+
+export function completeLogin(userId: number, email: string): void {
   clearFailures(email);
-  getDb().prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(Date.now(), row.id);
-  return { ok: true, user: toCurrent(row) };
+  getDb().prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(Date.now(), userId);
+}
+
+/** Loads an active user for the second login step. Null when gone, disabled or no longer on 2FA. */
+export function getUserForSecondFactor(id: number): (CurrentUser & { twoFactor: boolean }) | null {
+  const r = getDb().prepare("SELECT * FROM users WHERE id = ? AND active = 1").get(id) as UserRow | undefined;
+  return r && r.totp_enabled ? { ...toCurrent(r), twoFactor: true } : null;
+}
+
+/**
+ * Re-checks the signed-in user's password for sensitive actions. Failures count against the same
+ * per-account counter as the login form, so a stolen session cannot be used to guess the password.
+ */
+export async function verifyCurrentPassword(user: CurrentUser, password: string, ip: string | null): Promise<void> {
+  if (lockedFor(user.email, ip) > 0) throw new UserError("locked", "Too many failed attempts. Try again later.");
+  const row = getDb().prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id) as
+    | { password_hash: string }
+    | undefined;
+  if (!row || !(await verifyPassword(password, row.password_hash))) {
+    recordFailure(user.email, ip, true);
+    throw new UserError("bad_password", "Current password is incorrect.");
+  }
 }
 
 export async function changeOwnPassword(
-  userId: number,
+  user: CurrentUser,
   current: string,
   next: string,
   keepSessionHash: string,
+  ip: string | null,
 ): Promise<void> {
-  const row = getDb().prepare("SELECT password_hash FROM users WHERE id = ?").get(userId) as
-    | { password_hash: string }
-    | undefined;
-  if (!row || !(await verifyPassword(current, row.password_hash))) {
-    throw new UserError("bad_password", "Current password is incorrect.");
-  }
+  await verifyCurrentPassword(user, current, ip);
   const hash = await hashPassword(next);
   transaction((db) => {
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, userId);
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, user.id);
     // Other devices must re-authenticate with the new password.
-    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?").run(userId, keepSessionHash);
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?").run(user.id, keepSessionHash);
+    db.prepare("DELETE FROM login_challenges WHERE user_id = ?").run(user.id);
   });
 }
 

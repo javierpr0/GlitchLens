@@ -3,6 +3,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
   scrypt,
   scryptSync,
@@ -106,4 +107,9 @@ export function safeEqual(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
   const hb = createHash("sha256").update(b).digest();
   return timingSafeEqual(ha, hb);
+}
+
+/** Keyed hash for values that must be comparable but never readable (recovery codes). Depends on the server key. */
+export function hmacSecret(value: string): string {
+  return createHmac("sha256", secretKey()).update(value).digest("hex");
 }

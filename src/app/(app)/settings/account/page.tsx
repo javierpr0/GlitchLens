@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AccountForms } from "@/components/settings/account-forms";
 import { PersonalTokens } from "@/components/settings/personal-tokens";
+import { TwoFactorCard } from "@/components/settings/two-factor-card";
+import { isTwoFactorEnabled, recoveryCodesLeft } from "@/lib/twofactor";
 import { SessionsList } from "@/components/settings/sessions-list";
 import { getSessionHash, listSessions, requireUser } from "@/lib/auth";
 import { instanceIdsWithUserToken, listInstancesForUser } from "@/lib/instances";
@@ -38,6 +40,7 @@ export default async function AccountPage() {
           <AccountForms name={user.name} />
         </CardContent>
       </Card>
+      <TwoFactorCard enabled={isTwoFactorEnabled(user.id)} recoveryLeft={recoveryCodesLeft(user.id)} />
       <PersonalTokens rows={personal} />
       <SessionsList sessions={sessions} />
     </div>

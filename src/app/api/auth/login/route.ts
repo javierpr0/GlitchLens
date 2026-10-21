@@ -4,6 +4,7 @@ import { recordAudit } from "@/lib/audit";
 import { createSession, setSessionCookie } from "@/lib/auth";
 import { crossOriginResponse, isSameOrigin } from "@/lib/bff-guard";
 import { clientIp } from "@/lib/login-throttle";
+import { createChallenge } from "@/lib/twofactor";
 import { errorResponse, jsonError, readJson } from "@/lib/route-utils";
 import { verifyLogin } from "@/lib/users";
 
@@ -31,6 +32,10 @@ export async function POST(req: Request) {
         return res;
       }
       return jsonError("Invalid email or password.", 401);
+    }
+    if (result.needsTwoFactor) {
+      // No session yet: the password alone is not enough for this account.
+      return NextResponse.json({ twoFactor: true, challenge: createChallenge(result.user.id) });
     }
     const res = NextResponse.json({ ok: true });
     setSessionCookie(
