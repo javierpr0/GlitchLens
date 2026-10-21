@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE = "glitchlens_session";
 const PUBLIC_PAGES = ["/login", "/setup"];
-const PUBLIC_API = ["/api/setup", "/api/auth/login", "/api/auth/logout"];
+const PUBLIC_API = ["/api/setup", "/api/auth/login", "/api/auth/logout", "/api/health"];
 
 /**
  * First gate only: it checks the cookie exists. Whether the session is valid

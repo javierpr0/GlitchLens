@@ -77,6 +77,15 @@ for (let i = 0; i < 60; i++) await flood.req("/api/auth/login", { method: "POST"
 r = await new Client().req("/api/auth/login", { method: "POST", body: { email: "lock@example.com", password: "lockpassword123" } });
 ok(r.status === 429, "real account lock survives a flood of fake emails (even with the right password)", `${r.status}`);
 
+// 3d. a burst of logins cannot saturate password hashing, and the server recovers
+const burst = await Promise.all(Array.from({ length: 60 }, (_, i) => new Client().req("/api/auth/login", { method: "POST", body: { email: `burst${i}@example.com`, password: "nopenopenope" } })));
+ok(burst.some((x) => x.status === 503 && x.headers.get("retry-after")), "login burst is shed with 503 + Retry-After", JSON.stringify([...new Set(burst.map((x) => x.status))]));
+ok(burst.every((x) => x.status === 401 || x.status === 503 || x.status === 429), "burst only yields 401/503/429");
+r = await new Client().req("/api/auth/login", { method: "POST", body: { email: "root@example.com", password: "supersecret123" } });
+ok(r.status === 200, "login works right after the burst", `${r.status}`);
+r = await new Client().req("/api/health");
+ok(r.status === 200 && r.json?.status === "ok" && Object.keys(r.json).length === 1, "health endpoint is public and minimal", r.text);
+
 // 4. instances (superadmin)
 r = await admin.req("/settings/instances");
 ok(r.status === 200, "superadmin sees /settings/instances", `${r.status}`);

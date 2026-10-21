@@ -24,6 +24,11 @@ export async function POST(req: Request) {
         res.headers.set("Retry-After", String(result.retryAfter));
         return res;
       }
+      if (result.reason === "busy") {
+        const res = jsonError("The server is busy. Try again in a moment.", 503);
+        res.headers.set("Retry-After", "2");
+        return res;
+      }
       return jsonError("Invalid email or password.", 401);
     }
     const res = NextResponse.json({ ok: true });

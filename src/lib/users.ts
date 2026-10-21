@@ -201,14 +201,28 @@ function otherActiveSuperadmins(excludingId: number): number {
 export type LoginResult =
   | { ok: true; user: CurrentUser }
   | { ok: false; reason: "invalid" }
+  | { ok: false; reason: "busy" }
   | { ok: false; reason: "locked"; retryAfter: number };
+
+// scrypt is deliberately expensive. Cap how many run at once so a burst of logins
+// (even with made-up emails, which the per-account throttle cannot see) cannot starve the server.
+const MAX_CONCURRENT_LOGINS = 8;
+let loginsInFlight = 0;
 
 export async function verifyLogin(email: string, password: string, ip: string | null): Promise<LoginResult> {
   const retryAfter = lockedFor(email, ip);
   if (retryAfter > 0) return { ok: false, reason: "locked", retryAfter };
 
+  if (loginsInFlight >= MAX_CONCURRENT_LOGINS) return { ok: false, reason: "busy" };
+
   const row = getDb().prepare("SELECT * FROM users WHERE email = ?").get(email.trim()) as UserRow | undefined;
-  const valid = await verifyPassword(password, row?.password_hash ?? null);
+  loginsInFlight++;
+  let valid: boolean;
+  try {
+    valid = await verifyPassword(password, row?.password_hash ?? null);
+  } finally {
+    loginsInFlight--;
+  }
   if (!row || !valid || !row.active) {
     recordFailure(email, ip, !!row);
     return { ok: false, reason: "invalid" };

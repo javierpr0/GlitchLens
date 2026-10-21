@@ -101,6 +101,20 @@ All optional. See [`.env.example`](.env.example).
 - Run it behind HTTPS (a reverse proxy is fine) and forward `X-Forwarded-Proto`. Add HSTS and a CSP at the proxy if you need them.
 - Single process by design: login throttling and sessions use the local database, so run one instance per data directory.
 
+## Backups
+
+Everything GlitchLens stores is in the data directory (`GLITCHLENS_DATA_DIR`, `/data` in Docker): `glitchlens.db` (plus `-wal` and `-shm`) and, unless you set `GLITCHLENS_SECRET`, `secret.key`.
+
+- **Simplest:** stop GlitchLens, copy the whole directory, start it again.
+- **Live:** `sqlite3 data/glitchlens.db ".backup 'glitchlens-backup.db'"`, and copy `secret.key` alongside it.
+- **Restore:** put the files back in an empty data directory and start GlitchLens.
+
+Without the key (`secret.key` or the same `GLITCHLENS_SECRET`) the stored GlitchTip tokens cannot be decrypted. Users and instances keep working, but tokens must be entered again. Treat backups as sensitive: they contain password hashes and encrypted tokens.
+
+## Health check
+
+`GET /api/health` returns `{"status":"ok"}` when the process is up and the database answers (`503` otherwise). The Docker image uses it for its `HEALTHCHECK`.
+
 ## Development
 
 ```bash
@@ -124,6 +138,10 @@ src/app/api         route handlers (the only code that talks to GlitchTip)
 ```
 
 The browser never talks to GlitchTip. Route handlers under `src/app/api` do, using the active instance's token.
+
+## Known limitations
+
+No two-factor authentication and no `Content-Security-Policy` header yet. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
 
 ## License
 
