@@ -31,7 +31,7 @@ export class InstanceError extends Error {
 
 /** The request cannot reach GlitchTip: no session, no instance, or a stored token we cannot decrypt. */
 export class NoInstanceError extends Error {
-  constructor(public reason: "unauthenticated" | "none" | "token_unreadable" | "needs_token") {
+  constructor(public reason: "unauthenticated" | "none" | "token_unreadable" | "needs_token" | "two_factor_required") {
     super(`No usable GlitchTip instance (${reason})`);
     this.name = "NoInstanceError";
   }
@@ -196,6 +196,7 @@ export function deleteInstance(id: number): void {
 export type InstanceContext =
   | { kind: "ok"; user: CurrentUser; instance: ActiveInstance; instances: Instance[] }
   | { kind: "none"; user: CurrentUser; instances: Instance[] }
+  | { kind: "two_factor_required"; user: CurrentUser; instances: Instance[] }
   | { kind: "needs_token"; user: CurrentUser; instance: Instance; instances: Instance[] }
   | { kind: "token_unreadable"; user: CurrentUser; instance: Instance; instances: Instance[] };
 
@@ -208,6 +209,8 @@ export const getInstanceContext = cache(async (): Promise<InstanceContext> => {
   if (!user) throw new NoInstanceError("unauthenticated");
 
   const instances = listInstancesForUser(user);
+  // No GlitchTip data until the account has the 2FA the policy requires.
+  if (user.needsTwoFactor) return { kind: "two_factor_required", user, instances };
   if (!instances.length) return { kind: "none", user, instances };
 
   const wanted = Number((await cookies()).get(INSTANCE_COOKIE)?.value);

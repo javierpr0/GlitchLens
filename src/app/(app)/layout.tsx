@@ -31,7 +31,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           orgs={orgs}
           active={active}
           instances={ctx.instances}
-          activeInstanceId={ctx.kind === "none" ? null : ctx.instance.id}
+          activeInstanceId={"instance" in ctx ? ctx.instance.id : null}
         />
         <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8 [padding-left:max(0.75rem,env(safe-area-inset-left))] [padding-right:max(0.75rem,env(safe-area-inset-right))] [padding-bottom:max(1rem,env(safe-area-inset-bottom))] sm:[padding-left:max(1.5rem,env(safe-area-inset-left))] sm:[padding-right:max(1.5rem,env(safe-area-inset-right))]">
           {children}

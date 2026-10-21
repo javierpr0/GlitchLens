@@ -37,11 +37,20 @@ type Guarded = { user: CurrentUser; response?: undefined } | { response: NextRes
  */
 export async function guardRequest(
   req: Request,
-  opts: { write?: boolean; superadmin?: boolean } = {},
+  opts: { write?: boolean; superadmin?: boolean; allowWithoutTwoFactor?: boolean } = {},
 ): Promise<Guarded> {
   if (!isSameOrigin(req)) return { response: crossOriginResponse() };
   const user = await getCurrentUser();
   if (!user) return { response: NextResponse.json({ error: "unauthorized" }, { status: 401 }) };
+  // The policy requires 2FA for this account: only the enrolment endpoints opt out of this check.
+  if (user.needsTwoFactor && !opts.allowWithoutTwoFactor) {
+    return {
+      response: NextResponse.json(
+        { error: "Two-factor authentication is required for your account. Set it up in Settings > Account.", reason: "two_factor_required" },
+        { status: 403 },
+      ),
+    };
+  }
   if (opts.superadmin && user.role !== "superadmin") {
     return { response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }

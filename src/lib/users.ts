@@ -12,6 +12,8 @@ export interface CurrentUser {
   email: string;
   name: string;
   role: Role;
+  /** Set by the session lookup: the 2FA policy covers this account and it has not enrolled. Such a session can only reach the enrolment screen. */
+  needsTwoFactor?: boolean;
 }
 
 export interface UserSummary extends CurrentUser {

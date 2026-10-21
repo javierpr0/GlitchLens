@@ -17,8 +17,8 @@ export async function WorkspaceGuard({ children }: { children: ReactNode }) {
       <InstanceProblem
         kind={ctx.kind}
         isSuperadmin={isSuperadmin}
-        instanceName={ctx.kind === "none" ? undefined : ctx.instance.name}
-        tokenMode={ctx.kind === "none" ? undefined : ctx.instance.tokenMode}
+        instanceName={"instance" in ctx ? ctx.instance.name : undefined}
+        tokenMode={"instance" in ctx ? ctx.instance.tokenMode : undefined}
       />
     );
   }

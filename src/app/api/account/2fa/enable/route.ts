@@ -14,7 +14,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  const guard = await guardRequest(req);
+  const guard = await guardRequest(req, { allowWithoutTwoFactor: true });
   if (guard.response) return guard.response;
   const parsed = await readJson(req, Body);
   if (parsed.response) return parsed.response;

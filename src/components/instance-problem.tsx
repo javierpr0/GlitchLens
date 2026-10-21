@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, KeyRound, Server } from "lucide-react";
+import { AlertTriangle, KeyRound, Server, ShieldCheck } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import type { TokenMode } from "@/lib/instances";
 
-export type ProblemKind = "none" | "token_unreadable" | "needs_token" | "auth" | "unreachable";
+export type ProblemKind = "none" | "token_unreadable" | "needs_token" | "two_factor_required" | "auth" | "unreachable";
 
 const COPY: Record<ProblemKind, { title: string; admin: string; member: string }> = {
   none: {
@@ -16,6 +16,11 @@ const COPY: Record<ProblemKind, { title: string; admin: string; member: string }
     title: "The instance token cannot be read",
     admin: "The stored token could not be decrypted, usually because GLITCHLENS_SECRET changed. Enter the token again.",
     member: "This instance needs its token re-entered by a superadmin.",
+  },
+  two_factor_required: {
+    title: "Set up two-factor authentication",
+    admin: "Your administrator requires two-factor authentication. Turn it on in your account to continue.",
+    member: "Your administrator requires two-factor authentication. Turn it on in your account to continue.",
   },
   needs_token: {
     title: "Add your GlitchTip token",
@@ -45,17 +50,18 @@ export function InstanceProblem({
   instanceName?: string;
   tokenMode?: TokenMode;
 }) {
-  const personal = kind === "needs_token" || (kind === "auth" && tokenMode === "per_user");
+  const mustEnroll = kind === "two_factor_required";
+  const personal = mustEnroll || kind === "needs_token" || (kind === "auth" && tokenMode === "per_user");
   const copy = personal
     ? {
-        title: kind === "needs_token" ? COPY.needs_token.title : "GlitchTip rejected your token",
-        admin: kind === "needs_token" ? COPY.needs_token.admin : "Your personal token is invalid, expired or revoked. Add a new one in your account.",
-        member: kind === "needs_token" ? COPY.needs_token.member : "Your personal token is invalid, expired or revoked. Add a new one in your account.",
+        title: mustEnroll ? COPY.two_factor_required.title : kind === "needs_token" ? COPY.needs_token.title : "GlitchTip rejected your token",
+        admin: mustEnroll ? COPY.two_factor_required.admin : kind === "needs_token" ? COPY.needs_token.admin : "Your personal token is invalid, expired or revoked. Add a new one in your account.",
+        member: mustEnroll ? COPY.two_factor_required.member : kind === "needs_token" ? COPY.needs_token.member : "Your personal token is invalid, expired or revoked. Add a new one in your account.",
       }
     : COPY[kind];
   return (
     <EmptyState
-      icon={kind === "none" ? Server : personal ? KeyRound : AlertTriangle}
+      icon={kind === "none" ? Server : mustEnroll ? ShieldCheck : personal ? KeyRound : AlertTriangle}
       title={instanceName && kind !== "none" ? `${copy.title} (${instanceName})` : copy.title}
       description={isSuperadmin ? copy.admin : copy.member}
       action={

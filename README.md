@@ -108,7 +108,9 @@ All optional. See [`.env.example`](.env.example).
 
 Each user can enable TOTP in **Settings > Account**: scan the QR code, confirm with a code, and save the recovery codes (shown once). From then on, signing in asks for the password and then a code. Turning it off or generating new recovery codes needs the password and a valid code. Enabling it signs the user out of their other sessions.
 
-If someone loses their device and recovery codes, a superadmin can reset their 2FA in **Settings > Users > Edit**. If the locked-out account is the only superadmin, run this on the server instead (it needs access to the data directory, the same trust level as reading the database):
+**Requiring it.** A superadmin can make 2FA mandatory in **Settings > Users > Two-factor policy**: optional (default), required for superadmins, or required for everyone. Accounts the policy covers can still sign in, but the server only lets them reach the screen to set 2FA up (pages with GlitchTip data, admin pages and every API call are refused) until they finish. The superadmin who turns the policy on must already have 2FA enabled.
+
+If someone loses their device and recovery codes, a superadmin can reset their 2FA in **Settings > Users > Edit**. If the locked-out account is the only superadmin, run this on the server instead. It needs access to the data directory, the same trust level as reading the database, and with a 2FA policy on the reset user must enrol again at their next sign-in:
 
 ```bash
 npm run reset-2fa -- admin@example.com                       # from the project folder
@@ -157,7 +159,7 @@ The browser never talks to GlitchTip. Route handlers under `src/app/api` do, usi
 
 ## Known limitations
 
-Styles still allow inline rules (`style-src 'unsafe-inline'`) because the UI libraries need them; scripts do not. 2FA is optional per user. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
+Styles still allow inline rules (`style-src 'unsafe-inline'`) because the UI libraries need them; scripts do not. 2FA is optional by default (a superadmin can require it). See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
 
 ## License
 

@@ -549,5 +549,67 @@ const cspText = r.headers.get("content-security-policy") ?? "";
 ok(/object-src 'none'/.test(cspText) && /frame-ancestors 'none'/.test(cspText) && /base-uri 'self'/.test(cspText) && /form-action 'self'/.test(cspText), "CSP blocks plugins, framing, base-tag and cross-site form posts");
 ok(!/https?:\/\//.test(cspText.replace(/\s/g, "")), "CSP allows no third-party origins");
 
+
+// 18. policy: require two-factor
+const issuesPath = "/api/glitchtip/organizations/acme/issues";
+r = await neo.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "all" } });
+ok(r.status === 403, "a member cannot change the 2FA policy", `${r.status}`);
+r = await admin2.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "superadmins" } });
+ok(r.status === 400 && /own two-factor/.test(r.json?.error ?? ""), "the policy cannot be turned on by an account without 2FA", `${r.status} ${r.text}`);
+r = await admin2.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "nonsense" } });
+ok(r.status === 400, "an unknown policy value is rejected", `${r.status}`);
+r = await admin2.req("/api/account/2fa/setup", { method: "POST" });
+const rootSecret = r.json.secret;
+r = await admin2.req("/api/account/2fa/enable", { method: "POST", body: { password: "supersecret123", code: codeFor(rootSecret) } });
+ok(r.status === 200, "the superadmin enables their own 2FA first", `${r.status} ${r.text}`);
+r = await admin2.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "superadmins" } });
+ok(r.status === 200 && r.json?.requireTwoFactor === "superadmins", "policy: required for superadmins", r.text);
+
+await admin2.req("/api/admin/users", { method: "POST", body: { name: "Zed", email: "zed@example.com", password: "zedpassword123", role: "superadmin" } });
+const zed = new Client();
+r = await zed.req("/api/auth/login", { method: "POST", body: { email: "zed@example.com", password: "zedpassword123" } });
+ok(r.status === 200 && r.json?.ok === true && zed.jar.glitchlens_session, "an unenrolled superadmin can still sign in (to enrol)", r.text);
+r = await zed.req("/issues");
+ok(/Set up two-factor authentication/.test(r.text) && !/Boom from/.test(r.text), "pages with GlitchTip data show the enrolment prompt instead", `${r.status}`);
+r = await zed.req("/settings/users");
+ok(!/Two-factor policy/.test(r.text) && !/Add user/.test(r.text), "admin pages are closed until the superadmin enrols", `${r.status}`);
+r = await zed.req("/api/admin/users", { method: "POST", body: { name: "Pol", email: "pol@example.com", password: "polpassword123", role: "member" } });
+ok(r.status === 403 && r.json?.reason === "two_factor_required", "admin API is closed until the superadmin enrols", `${r.status} ${r.text}`);
+r = await zed.req(issuesPath);
+ok(r.status === 403 && r.json?.reason === "two_factor_required", "the GlitchTip proxy is closed until the superadmin enrols", `${r.status} ${r.text}`);
+r = await zed.req("/settings/account");
+ok(r.status === 200 && /requires two-factor/.test(r.text), "the account page stays reachable and explains why");
+r = await zed.req("/api/account/2fa/setup", { method: "POST" });
+ok(r.status === 200, "enrolment endpoints stay open", `${r.status}`);
+const zedSecret = r.json.secret;
+r = await zed.req("/api/account/2fa/enable", { method: "POST", body: { password: "zedpassword123", code: codeFor(zedSecret) } });
+ok(r.status === 200, "the superadmin can finish enrolling", `${r.status} ${r.text}`);
+r = await zed.req("/api/admin/users", { method: "POST", body: { name: "Pol", email: "pol@example.com", password: "polpassword123", role: "member" } });
+ok(r.status === 201, "once enrolled, the same session gets full access", `${r.status} ${r.text}`);
+
+r = await neo.req(issuesPath);
+ok(r.status === 200, "members are unaffected while the policy covers only superadmins", `${r.status}`);
+r = await admin2.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "all" } });
+ok(r.status === 200, "policy: required for everyone", r.text);
+r = await neo.req(issuesPath);
+ok(r.status === 403 && r.json?.reason === "two_factor_required", "members are blocked until they enrol once it covers everyone", `${r.status} ${r.text}`);
+r = await neo.req("/api/account/2fa/setup", { method: "POST" });
+ok(r.status === 200, "a blocked member can still start enrolment", `${r.status}`);
+freeStep();
+r = await zed.req("/api/account/2fa/disable", { method: "POST", body: { password: "zedpassword123", code: codeFor(zedSecret, 1) } });
+ok(r.status === 400 && /requires two-factor/.test(r.json?.error ?? ""), "an enrolled user covered by the policy cannot turn 2FA off", `${r.status} ${r.text}`);
+freeStep();
+r = await zed.req("/api/account/2fa/recovery", { method: "POST", body: { password: "zedpassword123", code: codeFor(zedSecret, 1) } });
+ok(r.status === 200, "but can still regenerate recovery codes", `${r.status}`);
+r = await admin2.req("/api/admin/settings", { method: "PUT", body: { requireTwoFactor: "off" } });
+ok(r.status === 200, "policy back to optional", r.text);
+r = await neo.req(issuesPath);
+ok(r.status === 200, "members regain access immediately when the policy is lifted", `${r.status}`);
+freeStep();
+r = await zed.req("/api/account/2fa/disable", { method: "POST", body: { password: "zedpassword123", code: codeFor(zedSecret, 1) } });
+ok(r.status === 204, "with the policy off, 2FA can be turned off again", `${r.status}`);
+r = await admin2.req("/settings/audit");
+ok(/policy\.update/.test(r.text), "policy changes are audited");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

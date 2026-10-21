@@ -26,7 +26,7 @@ async function call(url: string, body?: unknown): Promise<{ ok: boolean; data: R
 
 const field = "bg-background";
 
-export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; recoveryLeft: number }) {
+export function TwoFactorCard({ enabled, recoveryLeft, required }: { enabled: boolean; recoveryLeft: number; required: boolean }) {
   const router = useRouter();
   const [setup, setSetup] = useState<Setup | null>(null);
   const [code, setCode] = useState("");
@@ -172,7 +172,11 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
             ) : (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => setManage("recovery")}>New recovery codes</Button>
-                <Button variant="outline" size="sm" onClick={() => setManage("disable")}>Turn off</Button>
+                {required ? (
+                  <span className="self-center text-xs text-muted-foreground">Required by your administrator</span>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setManage("disable")}>Turn off</Button>
+                )}
               </div>
             )}
           </>

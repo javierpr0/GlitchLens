@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import type { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { randomToken, sha256 } from "@/lib/crypto";
+import { getTwoFactorPolicy, mustEnrollTwoFactor } from "@/lib/policy";
 import type { CurrentUser, Role } from "@/lib/users";
 
 export const SESSION_COOKIE = "glitchlens_session";
@@ -19,6 +20,7 @@ interface SessionRow {
   name: string;
   role: Role;
   last_used_at: number;
+  totp_enabled: number;
 }
 
 function lookup(token: string): CurrentUser | null {
@@ -26,7 +28,7 @@ function lookup(token: string): CurrentUser | null {
   const hash = sha256(token);
   const row = getDb()
     .prepare(
-      `SELECT u.id, u.email, u.name, u.role, s.last_used_at FROM sessions s
+      `SELECT u.id, u.email, u.name, u.role, u.totp_enabled, s.last_used_at FROM sessions s
        JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ? AND s.expires_at > ? AND s.last_used_at > ? AND u.active = 1`,
     )
@@ -35,7 +37,13 @@ function lookup(token: string): CurrentUser | null {
   if (now - row.last_used_at > TOUCH_EVERY_MS) {
     getDb().prepare("UPDATE sessions SET last_used_at = ? WHERE token_hash = ?").run(now, hash);
   }
-  return { id: row.id, email: row.email, name: row.name, role: row.role };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    needsTwoFactor: mustEnrollTwoFactor(row.role, !!row.totp_enabled, getTwoFactorPolicy()),
+  };
 }
 
 /** Cached per request so layouts, pages and data helpers share one lookup. */
@@ -58,6 +66,7 @@ export async function requireUser(): Promise<CurrentUser> {
 export async function requireSuperadmin(): Promise<CurrentUser> {
   const user = await requireUser();
   if (user.role !== "superadmin") notFound();
+  if (user.needsTwoFactor) redirect("/settings/account");
   return user;
 }
 

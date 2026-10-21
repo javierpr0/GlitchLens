@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { AccountForms } from "@/components/settings/account-forms";
 import { PersonalTokens } from "@/components/settings/personal-tokens";
 import { TwoFactorCard } from "@/components/settings/two-factor-card";
+import { getTwoFactorPolicy, mustEnrollTwoFactor } from "@/lib/policy";
 import { isTwoFactorEnabled, recoveryCodesLeft } from "@/lib/twofactor";
 import { SessionsList } from "@/components/settings/sessions-list";
 import { getSessionHash, listSessions, requireUser } from "@/lib/auth";
@@ -24,6 +25,11 @@ export default async function AccountPage() {
   return (
     <div>
       <PageHeader title="Account" description="Your GlitchLens profile and password." />
+      {user.needsTwoFactor && (
+        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+          Your administrator requires two-factor authentication. Set it up below to keep using GlitchLens.
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">Profile</CardTitle>
@@ -40,7 +46,11 @@ export default async function AccountPage() {
           <AccountForms name={user.name} />
         </CardContent>
       </Card>
-      <TwoFactorCard enabled={isTwoFactorEnabled(user.id)} recoveryLeft={recoveryCodesLeft(user.id)} />
+      <TwoFactorCard
+        enabled={isTwoFactorEnabled(user.id)}
+        recoveryLeft={recoveryCodesLeft(user.id)}
+        required={mustEnrollTwoFactor(user.role, false, getTwoFactorPolicy())}
+      />
       <PersonalTokens rows={personal} />
       <SessionsList sessions={sessions} />
     </div>
