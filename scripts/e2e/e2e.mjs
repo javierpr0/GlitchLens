@@ -524,5 +524,30 @@ r = await admin2.req("/settings/audit");
 ok(["2fa.enable", "2fa.disable", "2fa.reset", "2fa.reset_cli", "login.2fa_failed", "login.2fa_unreadable", "2fa.recovery_regenerate"].every((a) => r.text.includes(a)), "2FA events are audited", "");
 ok(!r.text.includes(secret) && !r.text.includes(recovery[0]) && !r.text.includes(fresh[0]), "audit log contains no 2FA secrets or recovery codes");
 
+
+// 17. Content-Security-Policy
+const nonceOf = (csp) => csp?.match(/script-src[^;]*'nonce-([^']+)'/)?.[1];
+const checkPage = async (client, path, label) => {
+  const x = await client.req(path);
+  const csp = x.headers.get("content-security-policy") ?? "";
+  const nonce = nonceOf(csp);
+  const inline = [...x.text.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]).filter((attrs) => !/\bsrc=/.test(attrs));
+  const scripts = [...x.text.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+  ok(!!nonce && /strict-dynamic/.test(csp), `${label}: CSP with a nonce and strict-dynamic`, csp);
+  ok(!/script-src[^;]*unsafe-(inline|eval)/.test(csp), `${label}: scripts are never allowed 'unsafe-inline' or 'unsafe-eval'`, csp);
+  ok(scripts.length > 0 && scripts.every((a) => a.includes(`nonce="${nonce}"`)), `${label}: every script tag carries this request's nonce`, JSON.stringify(scripts.filter((a) => !a.includes(`nonce="${nonce}"`)).slice(0, 3)));
+  ok(inline.every((a) => a.includes("nonce=")), `${label}: no inline script without a nonce`);
+  return nonce;
+};
+const n1 = await checkPage(new Client(), "/login", "login");
+const n2 = await checkPage(new Client(), "/login", "login (2nd request)");
+ok(n1 && n2 && n1 !== n2, "the nonce is different on every request");
+await checkPage(admin2, "/settings/account", "authenticated page");
+await checkPage(admin2, "/this-page-does-not-exist", "404 page");
+r = await new Client().req("/login");
+const cspText = r.headers.get("content-security-policy") ?? "";
+ok(/object-src 'none'/.test(cspText) && /frame-ancestors 'none'/.test(cspText) && /base-uri 'self'/.test(cspText) && /form-action 'self'/.test(cspText), "CSP blocks plugins, framing, base-tag and cross-site form posts");
+ok(!/https?:\/\//.test(cspText.replace(/\s/g, "")), "CSP allows no third-party origins");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

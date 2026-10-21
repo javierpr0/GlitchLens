@@ -22,7 +22,8 @@ server or superadmin account.
 ## Known limitations
 
 - Two-factor authentication is optional per user: there is no setting to require it for everyone yet.
-- No `Content-Security-Policy` header yet. Add one at your reverse proxy if you need it.
+- The Content-Security-Policy is strict for scripts (per-request nonce, no `unsafe-inline`/`unsafe-eval` in production) but allows inline styles, which the UI libraries (charts, toasts, popovers) require. It deliberately omits `upgrade-insecure-requests` so plain-HTTP LAN installs keep working.
+- No HSTS header: set it at your HTTPS reverse proxy.
 - Login throttling counters for non-existent emails and IPs live in memory and reset on restart.
 - `node:sqlite` is still experimental in Node 22.
 

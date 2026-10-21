@@ -101,7 +101,7 @@ All optional. See [`.env.example`](.env.example).
 - Five failed logins lock that account for 15 minutes. With `GLITCHLENS_TRUST_PROXY=true` the source IP is throttled too.
 - If the encryption key lives next to the database (the default), it protects tokens only against someone who gets the database file alone, for example from a backup. For stronger separation set `GLITCHLENS_SECRET` from your secret manager.
 - Only a superadmin can set an instance URL. GlitchLens will call any `http(s)` address you give it, including private ones, because self-hosted GlitchTip usually lives there.
-- Run it behind HTTPS (a reverse proxy is fine) and forward `X-Forwarded-Proto`. Add HSTS and a CSP at the proxy if you need them.
+- Run it behind HTTPS (a reverse proxy is fine) and forward `X-Forwarded-Proto`. GlitchLens sends a strict Content-Security-Policy (per-request nonce for scripts); add HSTS at the proxy.
 - Single process by design: login throttling and sessions use the local database, so run one instance per data directory.
 
 ## Two-factor authentication
@@ -157,7 +157,7 @@ The browser never talks to GlitchTip. Route handlers under `src/app/api` do, usi
 
 ## Known limitations
 
-No `Content-Security-Policy` header yet. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
+Styles still allow inline rules (`style-src 'unsafe-inline'`) because the UI libraries need them; scripts do not. 2FA is optional per user. See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
 
 ## License
 
