@@ -1,5 +1,9 @@
 # GlitchLens
 
+[![CI](https://github.com/javierpr0/GlitchLens/actions/workflows/ci.yml/badge.svg)](https://github.com/javierpr0/GlitchLens/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/javierpr0/GlitchLens/actions/workflows/codeql.yml/badge.svg)](https://github.com/javierpr0/GlitchLens/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/javierpr0/GlitchLens/blob/master/LICENSE)
+
 A self-hosted dashboard for [GlitchTip](https://glitchtip.com). Sign in with your own team accounts and look at issues, performance, releases, alerts, uptime, logs and projects from one interface, across **one or many GlitchTip instances**.
 
 GlitchLens keeps everything it needs in a local SQLite file. There is no external database, cache or queue to run.
@@ -50,7 +54,7 @@ Developed and tested end to end against **GlitchTip 6.2.6** (real instance: issu
 ## Quick start
 
 ```bash
-git clone <this repository> glitchlens
+git clone https://github.com/javierpr0/GlitchLens.git glitchlens
 cd glitchlens
 npm install
 npm run build

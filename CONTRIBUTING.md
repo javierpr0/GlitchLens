@@ -13,8 +13,8 @@ Thanks for taking the time. GlitchLens is a small project with a clear shape, so
 You need Node.js 22.13 or newer.
 
 ```bash
-git clone <your fork>
-cd glitchlens
+git clone https://github.com/<your-username>/GlitchLens.git
+cd GlitchLens
 npm install
 npm run dev          # http://localhost:3000, prints a setup code on first start
 ```

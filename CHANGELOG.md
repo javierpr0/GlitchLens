@@ -21,3 +21,5 @@ First public release.
 
 ### Compatibility
 - Tested against GlitchTip 6.2.6.
+
+[0.1.0]: https://github.com/javierpr0/GlitchLens/releases/tag/v0.1.0

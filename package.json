@@ -16,6 +16,14 @@
     "nextjs",
     "multi-instance"
   ],
+  "homepage": "https://github.com/javierpr0/GlitchLens#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/javierpr0/GlitchLens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/javierpr0/GlitchLens/issues"
+  },
   "private": true,
   "engines": {
     "node": ">=22.13.0"

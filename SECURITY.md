@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please do not open a public issue for security problems. Use GitHub's private vulnerability reporting
-(Security tab > Report a vulnerability) on this repository, and include:
+([report a vulnerability](https://github.com/javierpr0/GlitchLens/security/advisories/new), or Security tab > Report a vulnerability), and include:
 
 - what you found and where (file, route or screen),
 - steps to reproduce,
