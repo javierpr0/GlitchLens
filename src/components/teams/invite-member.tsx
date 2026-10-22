@@ -39,7 +39,8 @@ export function InviteMember({ orgSlug }: { orgSlug: string }) {
       const res = await fetch(`/api/glitchtip/organizations/${orgSlug}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), role }),
+        // GlitchTip 6 reads `orgRole`; older versions read `role`. Sending both keeps either working.
+        body: JSON.stringify({ email: email.trim(), role, orgRole: role }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

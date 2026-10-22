@@ -249,6 +249,9 @@ export interface UptimeMonitor {
   heartbeatEndpoint: string | null;
   projectName: string;
   envName: string | null;
+  /** Absent on older GlitchTip versions. */
+  name?: string;
+  url?: string | null;
   checks: Array<{ isUp: boolean; startCheck: string; reason: string | null }>;
 }
 

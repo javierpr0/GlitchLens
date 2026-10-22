@@ -39,6 +39,18 @@ const INSTANCE_STATUS: Record<InstanceError["code"], number> = {
   not_found: 404,
 };
 
+/** GlitchTip errors arrive as a string, `{detail: "..."}`, validation objects or an HTML error page. The UI wants one short string. */
+function glitchtipMessage(e: GlitchTipError): string {
+  const { detail } = e;
+  if (typeof detail === "string" && detail && !detail.trimStart().startsWith("<")) return detail.slice(0, 300);
+  if (detail && typeof detail === "object") {
+    const inner = (detail as { detail?: unknown }).detail;
+    if (typeof inner === "string" && inner) return inner.slice(0, 300);
+    return JSON.stringify(detail).slice(0, 300);
+  }
+  return e.message;
+}
+
 /** Maps domain errors to responses. Anything unknown is logged without details and returned as 500. */
 export function errorResponse(e: unknown): NextResponse {
   if (e instanceof UserError) return jsonError(e.message, USER_STATUS[e.code]);
@@ -50,7 +62,7 @@ export function errorResponse(e: unknown): NextResponse {
     return jsonError("GlitchTip rejected this instance's token. Ask a superadmin to update it.", 502);
   }
   if (e instanceof GlitchTipError) {
-    return NextResponse.json({ error: e.detail ?? e.message }, { status: e.status });
+    return jsonError(glitchtipMessage(e), e.status);
   }
   console.error("[glitchlens] unhandled error:", e instanceof Error ? e.message : "unknown");
   return jsonError("Internal error", 500);

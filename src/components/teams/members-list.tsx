@@ -28,7 +28,7 @@ export function MembersList({ orgSlug, members }: { orgSlug: string; members: Me
       const res = await fetch(`/api/glitchtip/organizations/${orgSlug}/members/${memberId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, orgRole: role }),
       });
       if (!res.ok) {
         toast.error("Could not change role.");

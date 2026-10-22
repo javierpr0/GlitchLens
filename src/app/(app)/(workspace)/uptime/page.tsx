@@ -39,10 +39,10 @@ export default async function UptimePage() {
               <CardContent className="p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{m.projectName}</div>
-                    {m.envName && (
-                      <div className="text-xs text-muted-foreground">{m.envName}</div>
-                    )}
+                    <div className="truncate font-medium">{m.name || m.projectName}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {[m.name ? m.projectName : null, m.envName, m.url].filter(Boolean).join(" · ")}
+                    </div>
                   </div>
                   <div className={cn("flex items-center gap-1.5 text-xs font-medium", m.isUp ? "text-emerald-400" : "text-red-400")}>
                     {m.isUp ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}

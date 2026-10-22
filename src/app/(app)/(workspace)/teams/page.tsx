@@ -20,22 +20,31 @@ export default async function TeamsPage() {
       <EmptyState icon={Users} title="No organization" description="Select an organization first." />
     );
 
-  const [members, teams] = await Promise.all([
-    api.members(org).catch(() => []),
+  // A failed request must not read as "no members": GlitchTip can error on this endpoint (for example 6.2.6 while an invitation is pending).
+  const [membersResult, teams] = await Promise.all([
+    Promise.allSettled([api.members(org)]).then(([r]) => r),
     api.teams(org).catch(() => []),
   ]);
+  const membersFailed = membersResult.status === "rejected";
+  const members = membersResult.status === "fulfilled" ? membersResult.value : [];
 
   return (
     <div className="space-y-8">
       <div>
         <PageHeader
           title="Members"
-          description={`${members.length} member${members.length === 1 ? "" : "s"} in this organization.`}
+          description={membersFailed ? "Could not load members." : `${members.length} member${members.length === 1 ? "" : "s"} in this organization.`}
           actions={<InviteMember orgSlug={org} />}
         />
         <Card>
           <CardContent className="p-0">
-            <MembersList orgSlug={org} members={members} />
+            {membersFailed ? (
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                GlitchTip returned an error when listing members, so the list is unavailable right now. Teams below are unaffected.
+              </p>
+            ) : (
+              <MembersList orgSlug={org} members={members} />
+            )}
           </CardContent>
         </Card>
       </div>
