@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Security problems** do not belong here: follow SECURITY.md instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+    validations:
+      required: true
+  - type: input
+    id: glitchlens
+    attributes:
+      label: GlitchLens version
+      placeholder: 0.1.0 or the commit
+    validations:
+      required: true
+  - type: input
+    id: glitchtip
+    attributes:
+      label: GlitchTip version
+      placeholder: 6.2.6
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run GlitchLens
+      options: [Docker, "npm start", "npm run dev", Other]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or console output
+      description: Remove tokens, passwords and anything private first.
+      render: shell

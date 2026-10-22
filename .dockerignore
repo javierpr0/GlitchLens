@@ -8,3 +8,13 @@ data
 docs
 *.log
 scripts/e2e
+scripts/test
+tests
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude
+tasks
+pnpm-lock.yaml
+pnpm-workspace.yaml
+tsconfig.tsbuildinfo

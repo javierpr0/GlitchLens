@@ -13,6 +13,8 @@ You will get an answer within a few days. Fixes ship as a patch release and are 
 
 ## Scope
 
+Maintainer: Eduardo Maldonado ([www.emac.dev](https://www.emac.dev)).
+
 In scope: authentication and sessions, role checks, the GlitchTip proxy under `/api/glitchtip`,
 instance and token storage, and anything that exposes data across users or instances.
 

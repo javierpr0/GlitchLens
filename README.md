@@ -4,7 +4,21 @@ A self-hosted dashboard for [GlitchTip](https://glitchtip.com). Sign in with you
 
 GlitchLens keeps everything it needs in a local SQLite file. There is no external database, cache or queue to run.
 
+Created and maintained by [Eduardo Maldonado](https://www.emac.dev).
+
 > GlitchLens is an independent project and is not affiliated with or endorsed by GlitchTip.
+
+## Screenshots
+
+| Dashboard | Issues |
+| --- | --- |
+| ![Dashboard with open issues, events over time and hot issues](docs/screenshots/dashboard.jpg) | ![Issue list with filters and bulk selection](docs/screenshots/issues.jpg) |
+
+| Issue detail | Instances and users |
+| --- | --- |
+| ![Issue with stacktrace, request and statistics](docs/screenshots/issue-detail.jpg) | ![Instances, each with a shared token or one token per user](docs/screenshots/instances.jpg) |
+
+![Users, roles and the two-factor policy](docs/screenshots/users.jpg)
 
 ## Features
 
@@ -167,8 +181,23 @@ The browser never talks to GlitchTip. Route handlers under `src/app/api` do, usi
 
 ## Known limitations
 
-Styles still allow inline rules (`style-src 'unsafe-inline'`) because the UI libraries need them; scripts do not. 2FA is optional by default (a superadmin can require it). See [SECURITY.md](SECURITY.md) for how to report a vulnerability and a hardening checklist.
+Styles still allow inline rules (`style-src 'unsafe-inline'`) because the UI libraries need them; scripts do not. 2FA is optional by default (a superadmin can require it). See `SECURITY.md` for how to report a vulnerability and a hardening checklist.
+
+## Testing
+
+```bash
+npm run test:unit      # 400+ unit tests, about 5 seconds, no services needed
+npm run test:coverage  # the same with a coverage report for src/lib and the proxy
+npm run build && npm run test:e2e   # end to end against fake GlitchTip servers
+npm test               # unit tests, a build, then the end-to-end suite
+```
+
+The unit tests use Node's built-in test runner and cover the security-critical code (sessions, roles, 2FA, the encryption of tokens, the login lock, the CSP, the GlitchTip client). They need no extra dependencies.
+
+## Contributing
+
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 ## License
 
-[MIT](LICENSE)
+GlitchLens is released under the MIT License, copyright (c) 2026 Eduardo Maldonado. The full text is in the `LICENSE` file at the root of the repository.

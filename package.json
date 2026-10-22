@@ -1,7 +1,25 @@
 {
   "name": "glitchlens",
   "version": "0.1.0",
+  "description": "Self-hosted, multi-instance dashboard for GlitchTip with built-in users and a local database.",
+  "author": {
+    "name": "Eduardo Maldonado",
+    "url": "https://www.emac.dev"
+  },
+  "license": "MIT",
+  "keywords": [
+    "glitchtip",
+    "sentry",
+    "error-tracking",
+    "dashboard",
+    "self-hosted",
+    "nextjs",
+    "multi-instance"
+  ],
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -43,10 +61,5 @@
     "eslint": "^9",
     "eslint-config-next": "^16.4.2",
     "shadcn": "^4.4.0"
-  },
-  "description": "Self-hosted, multi-instance dashboard for GlitchTip with built-in users and a local database.",
-  "license": "MIT",
-  "engines": {
-    "node": ">=22.13.0"
   }
 }
