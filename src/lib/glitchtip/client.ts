@@ -100,11 +100,13 @@ async function request(path: string, opts: FetchOpts & { method: string }): Prom
     throw new InstanceUnreachableError("GlitchTip redirected the request: update the instance URL");
   }
   if (!res.ok) {
-    let detail: unknown = null;
+    // Read the body once: a failed res.json() would have already consumed it.
+    const text = await res.text().catch(() => "");
+    let detail: unknown = text || null;
     try {
-      detail = await res.json();
+      detail = text ? JSON.parse(text) : null;
     } catch {
-      detail = await res.text().catch(() => null);
+      /* not JSON (for example an HTML error page): keep the text */
     }
     if (res.status === 401) throw new InstanceAuthError(detail);
     throw new GlitchTipError(res.status, detail);
@@ -149,7 +151,7 @@ export async function glitchtipFetchPaginated<T>(
   return { data, nextCursor: parseLinkCursor(link, "next"), prevCursor: parseLinkCursor(link, "previous"), total, maxHits };
 }
 
-function parseLinkCursor(link: string, rel: "next" | "previous"): string | null {
+export function parseLinkCursor(link: string, rel: "next" | "previous"): string | null {
   if (!link) return null;
   const segments = link.split(",").map((s) => s.trim());
   for (const seg of segments) {
