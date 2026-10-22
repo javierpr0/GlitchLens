@@ -20,6 +20,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
+      - run: npm run test:unit
       - run: npm run build
       - run: npm run test:e2e
       # Runtime dependencies must be clean. Dev tooling is reported by Dependabot instead.

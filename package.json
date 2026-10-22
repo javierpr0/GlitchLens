@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "node scripts/e2e/run.mjs",
-    "reset-2fa": "node scripts/reset-2fa.mjs"
+    "reset-2fa": "node scripts/reset-2fa.mjs",
+    "test:unit": "node --no-warnings --experimental-transform-types --import ./scripts/test/register.mjs --test \"tests/unit/**/*.test.ts\"",
+    "test:coverage": "node --no-warnings --experimental-transform-types --import ./scripts/test/register.mjs --experimental-test-coverage --test-coverage-include=\"src/lib/**\" --test-coverage-include=\"src/proxy.ts\" --test \"tests/unit/**/*.test.ts\"",
+    "test": "npm run test:unit && npm run build && npm run test:e2e"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
