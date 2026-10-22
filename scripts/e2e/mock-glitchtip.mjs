@@ -29,9 +29,93 @@ export function start(port, { token, orgName, prefix }) {
   return new Promise((r) => server.listen(port, "127.0.0.1", () => r(server)));
 }
 
+/**
+ * A stateful instance for the bulk-issue tests: cursor pagination, id/status/text filters,
+ * PUT/DELETE by id, and an injectable failure. /__state, /__reset and /__fail_after are test hooks.
+ */
+export function startBulk(port, token) {
+  let issues = [];
+  let deleteCalls = [];
+  let failAfter = null;
+  const seed = (alpha, beta, resolvedAlpha) => {
+    issues = [];
+    deleteCalls = [];
+    failAfter = null;
+    let id = 1;
+    const make = (title, status) => ({
+      id: String(id), shortId: `BULK-${id++}`, title, level: "error", status, count: "1", userCount: 0, numComments: 0,
+      firstSeen: "2026-01-01T00:00:00Z", lastSeen: "2026-01-02T00:00:00Z",
+      project: { id: "1", slug: "web", name: "Web", platform: "javascript" }, stats: { "24h": [] }, metadata: {},
+    });
+    for (let i = 0; i < alpha; i++) issues.push(make(`Alpha ${i}`, i < resolvedAlpha ? "resolved" : "unresolved"));
+    for (let i = 0; i < beta; i++) issues.push(make(`Beta ${i}`, "unresolved"));
+  };
+  seed(100, 20, 10);
+
+  const matches = (url) => {
+    const q = url.searchParams.get("query") ?? "";
+    const ids = url.searchParams.getAll("id");
+    return issues.filter((x) => {
+      if (ids.length && !ids.includes(x.id)) return false;
+      for (const term of q.split(/\s+/).filter(Boolean)) {
+        if (term === "is:unresolved") { if (x.status !== "unresolved") return false; }
+        else if (!x.title.includes(term)) return false;
+      }
+      return true;
+    });
+  };
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, "http://x");
+    const json = (code, body, headers = {}) => {
+      res.writeHead(code, { "content-type": "application/json", ...headers });
+      res.end(body === undefined ? "" : JSON.stringify(body));
+    };
+    if (url.pathname === "/__state") return json(200, { count: issues.length, resolved: issues.filter((x) => x.status === "resolved").length, deleteCalls });
+    if (url.pathname === "/__reset") { seed(Number(url.searchParams.get("alpha") ?? 100), Number(url.searchParams.get("beta") ?? 20), Number(url.searchParams.get("resolved") ?? 10)); return json(200, { ok: true }); }
+    if (url.pathname === "/__fail_after") { failAfter = Number(url.searchParams.get("n")); return json(200, { ok: true }); }
+    if (url.pathname === "/api/settings/") return json(200, { version: "4.0-mock" });
+    if (req.headers.authorization !== `Bearer ${token}`) return json(401, { detail: "Invalid token" });
+    const p = url.pathname;
+    if (p === "/api/0/users/me/") return json(200, { id: "1", email: "owner-bulk@example.com", username: "owner", name: "Owner" });
+    if (p === "/api/0/organizations/") return json(200, [{ id: "1", slug: "acme", name: "Bulk Org", status: { id: "active", name: "active" }, isAcceptingEvents: true, dateCreated: "2026-01-01T00:00:00Z" }]);
+    if (p === "/api/0/organizations/acme/issues/") {
+      if (req.method === "GET") {
+        const all = matches(url);
+        const limit = Math.min(Number(url.searchParams.get("limit") ?? 25), 100);
+        const offset = url.searchParams.get("cursor") ? Number(Buffer.from(url.searchParams.get("cursor"), "base64").toString()) : 0;
+        const slice = all.slice(offset, offset + limit);
+        const more = offset + limit < all.length;
+        const next = Buffer.from(String(offset + limit)).toString("base64");
+        return json(200, slice, { "x-hits": String(all.length), "x-max-hits": "1000", link: `<http://x/?cursor=a>; rel="previous"; results="false", <http://x/?cursor=${next}>; rel="next"; results="${more}"; cursor="${next}"` });
+      }
+      let raw = ""; req.on("data", (c) => (raw += c));
+      return req.on("end", () => {
+        const ids = url.searchParams.getAll("id");
+        if (!ids.length) return json(400, { detail: "id required" });
+        if (req.method === "DELETE") {
+          if (failAfter !== null && deleteCalls.length >= failAfter) return json(500, { detail: "boom" });
+          deleteCalls.push(ids.length);
+          issues = issues.filter((x) => !ids.includes(x.id));
+          return json(200, {});
+        }
+        if (req.method === "PUT") {
+          const body = raw ? JSON.parse(raw) : {};
+          for (const x of issues) if (ids.includes(x.id) && body.status) x.status = body.status;
+          return json(200, { status: body.status });
+        }
+        return json(405, {});
+      });
+    }
+    return json(200, req.method === "GET" ? [] : {});
+  });
+  return new Promise((r) => server.listen(port, "127.0.0.1", () => r(server)));
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   await start(4101, { token: "tokA-secret-111", orgName: "Acme Alpha" });
   await start(4102, { token: "tokB-secret-222", orgName: "Beta Org" });
   await start(4103, { prefix: "tokC-", orgName: "Gamma Personal" });
-  console.log("mock GlitchTip instances listening on 4101, 4102, 4103");
+  await startBulk(4104, "tokD-bulk-444");
+  console.log("mock GlitchTip instances listening on 4101, 4102, 4103, 4104");
 }

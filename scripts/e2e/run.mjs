@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { start } from "./mock-glitchtip.mjs";
+import { start, startBulk } from "./mock-glitchtip.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const port = process.env.E2E_PORT ?? "3100";
@@ -20,6 +20,7 @@ const mocks = [
   await start(4101, { token: "tokA-secret-111", orgName: "Acme Alpha" }),
   await start(4102, { token: "tokB-secret-222", orgName: "Beta Org" }),
   await start(4103, { prefix: "tokC-", orgName: "Gamma Personal" }),
+  await startBulk(4104, "tokD-bulk-444"),
 ];
 
 const server = spawn(path.join(root, "node_modules/.bin/next"), ["start", "-p", port, "-H", "127.0.0.1"], {

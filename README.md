@@ -14,11 +14,19 @@ GlitchLens keeps everything it needs in a local SQLite file. There is no externa
 - Connect **multiple GlitchTip instances** and switch between them from the top bar.
 - Instance settings are managed inside the app (URL + API token, with a connection test). Tokens are encrypted at rest.
 - Per instance, choose **one shared token** or **one token per user**, so GlitchTip can attribute actions to the real person.
-- Dashboard, issues (filters, bulk actions, comments), performance, releases, alerts, uptime, logs, teams and projects.
+- Dashboard, issues (filters, comments, bulk actions that can **select every issue matching a search across all pages**, with a typed confirmation before deleting), performance, releases, alerts, uptime, logs, teams and projects.
 - **Two-factor authentication** (TOTP): any authenticator app, with 10 single-use recovery codes. Each user turns it on from Settings > Account.
 - **Audit log** (superadmin): sign-ins, lockouts and changes to users, instances and tokens, kept 180 days. Never stores passwords or tokens.
 - **Session management**: see and revoke your own sessions, sign out everywhere else. Sessions expire after 7 days idle or 14 days in total.
 - Installable as a PWA, responsive, dark theme.
+
+## Compatibility
+
+Developed and tested end to end against **GlitchTip 6.2.6** (real instance: issues, pagination, performance, uptime, releases, alerts, teams, members, keys, comments and bulk actions). Notes from that testing:
+
+- GlitchTip 6 requires `orgRole` when inviting members or changing a role; GlitchLens sends both `orgRole` and `role` so older versions keep working.
+- GlitchTip 6 only lets the organization **name** be changed through its API, so that is the only editable field in Settings > Organization.
+- Uptime monitors pointing at private or internal addresses are refused by GlitchTip itself.
 
 ## Requirements
 
@@ -58,7 +66,7 @@ Data lives in the `glitchlens-data` volume (`/data` in the container). Back that
 
 ## Connecting a GlitchTip instance
 
-1. In GlitchTip open your profile, go to **Auth Tokens** and create a token. Selecting all scopes lets GlitchLens manage issues, projects and alerts; a read-only token is enough if you only want to look.
+1. In GlitchTip open your profile, go to **Auth Tokens** and create a token. Selecting all scopes (`project`, `team`, `event`, `org` and `member`, each with read, write and admin, plus `project:releases`) lets GlitchLens manage everything; the read scopes are enough if you only want to look.
 2. In GlitchLens go to **Settings > Instances > Add instance**, enter the URL and the token, and use **Test connection**.
 3. Go to **Settings > Users** to add your team and choose which instances each person can see.
 

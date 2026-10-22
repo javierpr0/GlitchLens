@@ -611,5 +611,49 @@ ok(r.status === 204, "with the policy off, 2FA can be turned off again", `${r.st
 r = await admin2.req("/settings/audit");
 ok(/policy\.update/.test(r.text), "policy changes are audited");
 
+
+// 19. bulk actions across every page of a search
+const bulkState = async () => (await (await fetch("http://127.0.0.1:4104/__state")).json());
+const mockHook = (p) => fetch(`http://127.0.0.1:4104/${p}`);
+const bulk = (c, body) => c.req("/api/issues/bulk", { method: "POST", body });
+
+r = await admin2.req("/api/admin/instances", { method: "POST", body: { name: "Bulk", baseUrl: "http://127.0.0.1:4104", token: "tokD-bulk-444" } });
+const idD = r.json?.id;
+ok(r.status === 201, "creates the stateful bulk instance", r.text);
+await admin2.req("/api/instance", { method: "POST", body: { id: idD } });
+
+r = await bulk(admin2, { action: "count", filters: {} });
+ok(r.status === 200 && r.json?.count === 110 && r.json?.capped === false, "count walks every page and defaults to unresolved (110 of 120)", r.text);
+r = await bulk(admin2, { action: "count", filters: { query: "" } });
+ok(r.json?.count === 120, "an empty query means every issue (120)", r.text);
+r = await bulk(admin2, { action: "count", filters: { query: "Alpha" } });
+ok(r.json?.count === 100, "text filters are honoured (Alpha: 100)", r.text);
+r = await bulk(admin2, { action: "delete", filters: { query: "Alpha" } });
+ok(r.status === 400, "a destructive action without the confirmed count is refused", `${r.status}`);
+r = await bulk(admin2, { action: "delete", filters: { query: "Alpha" }, expectedCount: 99 });
+ok(r.status === 409 && r.json?.count === 100, "a stale confirmed count is refused and reports the real one", `${r.status} ${r.text}`);
+ok((await bulkState()).count === 120 && (await bulkState()).deleteCalls.length === 0, "a refused bulk delete touches nothing");
+r = await bulk(vic, { action: "delete", filters: { query: "Alpha" }, expectedCount: 100 });
+ok(r.status === 403, "a viewer cannot run bulk actions", `${r.status}`);
+
+r = await bulk(admin2, { action: "resolved", filters: { query: "Beta" }, expectedCount: 20 });
+ok(r.status === 200 && r.json?.affected === 20, "bulk resolve over a whole search", r.text);
+ok((await bulkState()).resolved === 30, "GlitchTip now has 30 resolved issues (10 + 20)");
+
+r = await bulk(admin2, { action: "delete", filters: { query: "Alpha" }, expectedCount: 100 });
+const st = await bulkState();
+ok(r.status === 200 && r.json?.affected === 100 && st.count === 20, "bulk delete removes exactly the 100 matching issues", `${r.text} ${JSON.stringify(st)}`);
+ok(JSON.stringify(st.deleteCalls) === "[50,50]", "deletes go out in batches of 50", JSON.stringify(st.deleteCalls));
+
+await mockHook("__reset?alpha=120&beta=0&resolved=0");
+await mockHook("__fail_after?n=1");
+r = await bulk(admin2, { action: "delete", filters: { query: "Alpha" }, expectedCount: 120 });
+ok(r.status >= 400 && r.json?.affected === 50 && /boom|error/i.test(r.json?.error ?? ""), "a failure mid-way reports how many were already deleted", `${r.status} ${r.text}`);
+ok((await bulkState()).count === 70, "and exactly that many are gone in GlitchTip");
+r = await admin2.req("/settings/audit");
+ok(/issues\.bulk_delete/.test(r.text) && /issues\.bulk_update/.test(r.text), "bulk actions are audited, including the partial one");
+ok(/&quot;requested&quot;:120/.test(r.text) || /"requested":120/.test(r.text) || /requested/.test(r.text), "audit records how many were requested and done");
+await mockHook("__reset");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -132,6 +132,11 @@ export const api = {
       schema: IssueSchema,
     });
   },
+  /** Bulk change by explicit ids (GlitchTip also filters by query, but ids guarantee we touch exactly what was counted). */
+  bulkUpdateIssues: (org: string, ids: string[], body: Partial<{ status: IssueStatus }>) =>
+    glitchtipFetch<unknown>(`/api/0/organizations/${org}/issues/`, { method: "PUT", searchParams: { id: ids }, body }),
+  bulkDeleteIssues: (org: string, ids: string[]) =>
+    glitchtipFetch<unknown>(`/api/0/organizations/${org}/issues/`, { method: "DELETE", searchParams: { id: ids } }),
   issue: (id: string) => glitchtipFetch<Issue>(`/api/0/issues/${id}/`, { schema: IssueSchema }),
   issueLatestEvent: (id: string) =>
     glitchtipFetch<IssueEvent>(`/api/0/issues/${id}/events/latest/`),

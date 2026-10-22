@@ -7,31 +7,82 @@ import type { Issue } from "@/lib/glitchtip/types";
 import { compactNumber, levelColor, relativeTime } from "@/lib/format";
 import { PlatformIcon } from "@/components/platform-icon";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Inbox, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Inbox, Loader2, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { BulkActionsBar } from "@/components/issues/bulk-actions-bar";
+
+/** The filters currently in the URL, in the shape the bulk endpoint expects. */
+function filtersFrom(params: URLSearchParams) {
+  const projects = params.getAll("project");
+  return {
+    ...(params.has("query") ? { query: params.get("query") ?? "" } : {}),
+    ...(projects.length ? { project: projects } : {}),
+    ...(params.get("environment") ? { environment: params.get("environment")! } : {}),
+    ...(params.get("statsPeriod") ? { statsPeriod: params.get("statsPeriod")! } : {}),
+    ...(params.get("sort") ? { sort: params.get("sort")! } : {}),
+  };
+}
+
+/** Selection that spans every page of the current search, not just the rows on screen. */
+export interface AllMatching {
+  key: string;
+  count: number;
+  capped: boolean;
+}
 
 export function IssuesTable({
   issues,
   nextCursor,
   prevCursor,
+  total,
 }: {
   issues: Issue[];
   nextCursor: string | null;
   prevCursor: string | null;
+  total: number;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [allMatchingState, setAllMatching] = useState<AllMatching | null>(null);
+  const [counting, setCounting] = useState(false);
+  // The URL (without the page cursor) identifies the search: a different search invalidates the selection.
+  const searchKey = (() => {
+    const p = new URLSearchParams(params.toString());
+    p.delete("cursor");
+    return p.toString();
+  })();
+  const allMatching = allMatchingState?.key === searchKey ? allMatchingState : null;
+
+  async function selectAllMatching() {
+    setCounting(true);
+    try {
+      const res = await fetch("/api/issues/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "count", filters: filtersFrom(params) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { count?: number; capped?: boolean; error?: string };
+      if (!res.ok || typeof data.count !== "number") {
+        toast.error(data.error ?? "Could not count the matching issues.");
+        return;
+      }
+      setAllMatching({ key: searchKey, count: data.count, capped: !!data.capped });
+    } finally {
+      setCounting(false);
+    }
+  }
 
   function goToCursor(cursor: string | null) {
     const next = new URLSearchParams(params.toString());
     if (cursor) next.set("cursor", cursor);
     else next.delete("cursor");
     setSelected(new Set());
+    // Going to another page keeps an "all matching" selection: that is the point of it.
     router.push(`/issues?${next.toString()}`);
   }
 
@@ -45,8 +96,14 @@ export function IssuesTable({
   }
 
   function toggleAll() {
+    setAllMatching(null);
     if (selected.size === issues.length) setSelected(new Set());
     else setSelected(new Set(issues.map((i) => i.id)));
+  }
+
+  function clearAll() {
+    setSelected(new Set());
+    setAllMatching(null);
   }
 
   if (!issues.length) {
@@ -64,7 +121,40 @@ export function IssuesTable({
 
   return (
     <div>
-      <BulkActionsBar selected={Array.from(selected)} onClear={() => setSelected(new Set())} />
+      <BulkActionsBar
+        selected={Array.from(selected)}
+        allMatching={allMatching ? { ...allMatching, filters: filtersFrom(params) } : null}
+        onClear={clearAll}
+      />
+
+      {allChecked && total > issues.length && (
+        <div className="mb-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
+          {allMatching ? (
+            <>
+              <span>
+                All <span className="font-semibold">{allMatching.count.toLocaleString()}{allMatching.capped ? "+" : ""}</span> issues matching this search are
+                selected{allMatching.capped ? " (the first 10,000)" : ""}.
+              </span>
+              <button type="button" onClick={clearAll} className="font-medium text-primary hover:underline">
+                Clear selection
+              </button>
+            </>
+          ) : (
+            <>
+              <span>All {issues.length} issues on this page are selected.</span>
+              <button
+                type="button"
+                onClick={selectAllMatching}
+                disabled={counting}
+                className="inline-flex items-center gap-1 font-medium text-primary hover:underline disabled:opacity-60"
+              >
+                {counting && <Loader2 className="h-3 w-3 animate-spin" />}
+                Select all {total.toLocaleString()} issues matching this search
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="w-full overflow-x-auto">

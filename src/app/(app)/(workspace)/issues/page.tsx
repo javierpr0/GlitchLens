@@ -4,6 +4,7 @@ import { AutoRefresh } from "@/components/issues/auto-refresh";
 import { IssueFilters } from "@/components/issues/issue-filters";
 import { IssuesTable } from "@/components/issues/issues-table";
 import { api } from "@/lib/glitchtip/api";
+import { toIssueListFilter, type IssueSearchParams } from "@/lib/issues-filter";
 import { getActiveOrgSlug } from "@/lib/org";
 import { AlertTriangle } from "lucide-react";
 import type { Metadata } from "next";
@@ -11,13 +12,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Issues" };
 export const dynamic = "force-dynamic";
 
-interface SearchParams {
+interface SearchParams extends IssueSearchParams {
   cursor?: string;
-  query?: string;
-  project?: string | string[];
-  environment?: string;
-  statsPeriod?: string;
-  sort?: string;
 }
 
 export default async function IssuesPage({
@@ -26,13 +22,7 @@ export default async function IssuesPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  // Defensive dedupe in case the URL gets polluted with repeated values.
-  const rawProjects = Array.isArray(sp.project)
-    ? sp.project
-    : sp.project
-      ? [sp.project]
-      : undefined;
-  const projectFilter = rawProjects ? Array.from(new Set(rawProjects)) : undefined;
+  const filter = toIssueListFilter(sp);
   const org = await getActiveOrgSlug();
 
   if (!org) {
@@ -45,23 +35,8 @@ export default async function IssuesPage({
     );
   }
 
-  // Sentry default: when `query` is absent from the URL, filter to unresolved.
-  // Empty string explicitly means "All" (user picked it).
-  const queryToSend =
-    typeof sp.query === "string"
-      ? sp.query || undefined
-      : "is:unresolved";
-
   const [issues, projects] = await Promise.all([
-    api.issues(org, {
-      cursor: sp.cursor ?? null,
-      query: queryToSend,
-      project: projectFilter,
-      environment: sp.environment,
-      statsPeriod: sp.statsPeriod ?? "14d",
-      sort: sp.sort,
-      limit: 25,
-    }),
+    api.issues(org, { ...filter, cursor: sp.cursor ?? null, limit: 25 }),
     api.organizationProjects(org).catch(() => []),
   ]);
 
@@ -78,6 +53,7 @@ export default async function IssuesPage({
           issues={issues.data}
           nextCursor={issues.nextCursor}
           prevCursor={issues.prevCursor}
+          total={issues.total}
         />
       </div>
     </div>
